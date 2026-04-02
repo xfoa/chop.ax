@@ -1,0 +1,26 @@
+{
+  "name": "chop.ax",
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "bun run --hot src/index.ts",
+    "start": "bun run src/index.ts"
+  },
+  "dependencies": {
+    "@mozilla/readability": "^0.6.0",
+    "cheerio": "^1",
+    "hono": "^4",
+    "ioredis": "^5",
+    "jsdom": "^29.0.1",
+    "lightningcss": "^1",
+    "puppeteer": "^24",
+    "puppeteer-extra": "^3",
+    "puppeteer-extra-plugin-adblocker": "^2.13",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
+    "purgecss": "^6"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/jsdom": "^28.0.1",
+    "typescript": "^5"
+  }
+}
