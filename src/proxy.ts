@@ -1,7 +1,7 @@
 import type { Context } from "hono";
 import { isAllowed, getAllowedDomains } from "./whitelist";
 import { getCached, setCache } from "./cache";
-import { renderPage } from "./browser";
+import { renderPage, collectImgurImages } from "./browser";
 import { cleanHtml } from "./clean";
 
 const MAX_CONCURRENT = 5;
@@ -73,18 +73,30 @@ export async function handleProxy(c: Context): Promise<Response> {
 async function processPage(url: string): Promise<string> {
   activeRenders++;
   try {
-    const { html, css } = await renderPage(url);
-
-    // Imgur pages: extract image IDs and build a gallery
+    // Imgur pages: scroll and collect image IDs incrementally
     const parsed = new URL(url);
     if (parsed.hostname === "imgur.com" || parsed.hostname === "www.imgur.com") {
-      const gallery = buildImgurGallery(html, url);
-      if (gallery) {
+      const ids = await collectImgurImages(url);
+      if (ids.length > 0) {
+        const gallery = buildImgurGallery(ids, url);
         await setCache(url, gallery);
         return gallery;
       }
+      // Single-image post: Gallery-Content doesn't exist, extract og:image
+      const { html: imgurHtml } = await renderPage(url);
+      const ogMatch = imgurHtml.match(/<meta\s+property="og:image"\s+content="([^"]+)"/);
+      if (ogMatch) {
+        const imgUrl = ogMatch[1];
+        const idMatch = imgUrl.match(/i\.imgur\.com\/([A-Za-z0-9]+)/);
+        if (idMatch) {
+          const gallery = buildImgurGallery([idMatch[1]], url);
+          await setCache(url, gallery);
+          return gallery;
+        }
+      }
     }
 
+    const { html, css } = await renderPage(url);
     const cleaned = await cleanHtml(html, css, url);
     await setCache(url, cleaned);
     return cleaned;
@@ -93,21 +105,8 @@ async function processPage(url: string): Promise<string> {
   }
 }
 
-function buildImgurGallery(html: string, sourceUrl: string): string | null {
-  // Extract album image IDs from og:image meta tags only (not suggestions)
-  const ids = new Set<string>();
-  const ogRe = /property="og:image"\s+content="https?:\/\/i\.imgur\.com\/([A-Za-z0-9]+?)(?:h)?\.\w+[^"]*"/g;
-  let m;
-  while ((m = ogRe.exec(html)) !== null) {
-    ids.add(m[1]);
-  }
-
-  if (ids.size === 0) return null;
-
-  const titleMatch = html.match(/<title>([^<]*)<\/title>/);
-  const title = titleMatch ? titleMatch[1].replace(/ - Imgur$/, "").trim() : "Imgur Album";
-
-  const images = [...ids]
+function buildImgurGallery(ids: string[], sourceUrl: string): string {
+  const images = ids
     .map(
       (id) =>
         `<img src="https://i.imgur.com/${id}.jpg" alt="" loading="lazy">`
@@ -118,7 +117,7 @@ function buildImgurGallery(html: string, sourceUrl: string): string | null {
 <html><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${title} - chop.ax</title>
+<title>Imgur Album - chop.ax</title>
 <style>
 body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
 max-width:680px;margin:0 auto;padding:20px;background:#fff;color:#222}
@@ -128,7 +127,7 @@ img{max-width:100%;height:auto;display:block;margin:12px 0;border-radius:4px}
 border-top:1px solid #ccc;font-size:14px;color:#666}
 </style>
 </head><body>
-<h1>${title}</h1>
+<h1>Imgur Album</h1>
   ${images}
 <div class="chop-footer">
   <a href="${sourceUrl}">Original page</a> --

@@ -58,3 +58,46 @@ export async function renderPage(
     await page.close();
   }
 }
+
+// Scroll an Imgur album page and collect image IDs incrementally,
+// since Imgur virtualizes the DOM and removes off-screen images.
+export async function collectImgurImages(url: string): Promise<string[]> {
+  const b = await getBrowser();
+  const page = await b.newPage();
+
+  try {
+    await page.goto(url, { waitUntil: "networkidle2", timeout: 15000 });
+
+    const ids = await page.evaluate(async () => {
+      const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
+      const seen = new Set<string>();
+      const collect = () => {
+        // Only grab images inside the album gallery, not suggestions/sidebar
+        const container = document.querySelector(".Gallery-Content") || document;
+        container.querySelectorAll("img").forEach((img) => {
+          const src = img.getAttribute("src") || "";
+          const m = src.match(/i\.imgur\.com\/([A-Za-z0-9]+?)(?:_d|h)?\.\w+/);
+          if (m) seen.add(m[1]);
+        });
+      };
+
+      // Collect at current scroll position
+      collect();
+
+      // Scroll down incrementally, collecting at each step
+      let prev = 0;
+      while (document.body.scrollHeight !== prev) {
+        prev = document.body.scrollHeight;
+        window.scrollTo(0, prev);
+        await delay(400);
+        collect();
+      }
+
+      return [...seen];
+    });
+
+    return ids;
+  } finally {
+    await page.close();
+  }
+}
