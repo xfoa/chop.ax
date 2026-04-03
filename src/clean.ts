@@ -27,12 +27,15 @@ const READER_CSS = `
     text-align: center; padding: 20px; margin-top: 40px;
     border-top: 1px solid #ccc; font-size: 14px; color: #666;
   }
-  /* Reddit comment threading */
+  /* HN comment threading */
   .comment { margin: 8px 0; padding: 4px 0; }
   .child { margin-left: 16px; padding-left: 8px; border-left: 2px solid #ddd; }
   .tagline { font-size: 0.85em; color: #888; }
   .author { color: #06c; font-weight: bold; text-decoration: none; }
   .md { margin: 4px 0; }
+  /* HN comment depth */
+  .hn-comment { margin: 8px 0; padding: 4px 0; }
+  .hn-indent { margin-left: 20px; padding-left: 8px; border-left: 2px solid #ddd; }
 `;
 
 export async function cleanHtml(
@@ -40,6 +43,12 @@ export async function cleanHtml(
   css: string,
   sourceUrl: string
 ): Promise<string> {
+  // HN comment pages get special treatment to preserve threading
+  const parsedUrl = new URL(sourceUrl);
+  if (parsedUrl.hostname === "news.ycombinator.com" && parsedUrl.pathname.startsWith("/item")) {
+    return cleanHnComments(html, sourceUrl);
+  }
+
   // Skip Readability for listing/index pages (e.g. subreddit fronts, HN)
   if (isListingPage(sourceUrl)) {
     return fallbackClean(html, css, sourceUrl);
@@ -91,6 +100,83 @@ export async function cleanHtml(
   rewriteUrls($, sourceUrl);
 
   return $.html();
+}
+
+function cleanHnComments(html: string, sourceUrl: string): string {
+  const $ = cheerio.load(html);
+
+  // Extract post title and link
+  const titleLink = $(".titleline a").first();
+  const postTitle = titleLink.text() || $("title").text() || "";
+  const postHref = titleLink.attr("href") || "";
+
+  // Extract submission text if present
+  const topText = $(".toptext").html() || "";
+
+  // Build comment list with indent levels
+  const comments: { indent: number; user: string; age: string; text: string }[] = [];
+  $("tr.athing.comtr").each((_, el) => {
+    const row = $(el);
+    const indent = parseInt(row.find("td.ind").attr("indent") || "0", 10);
+    const user = row.find(".hnuser").text();
+    const age = row.find(".age a").text();
+    const text = row.find(".commtext").html() || "";
+    if (text) {
+      comments.push({ indent, user, age, text });
+    }
+  });
+
+  // Nest comments into indented divs
+  let commentsHtml = "";
+  let prevIndent = 0;
+  let openDivs = 0;
+
+  for (const c of comments) {
+    // Close divs to get back to the right level
+    while (prevIndent > c.indent) {
+      commentsHtml += "</div>";
+      openDivs--;
+      prevIndent--;
+    }
+    // Open indent wrapper if going deeper
+    if (c.indent > prevIndent) {
+      for (let i = prevIndent; i < c.indent; i++) {
+        commentsHtml += '<div class="hn-indent">';
+        openDivs++;
+      }
+    }
+    prevIndent = c.indent;
+
+    const userHtml = c.user ? `<a href="user?id=${escapeHtml(c.user)}" class="author">${escapeHtml(c.user)}</a>` : "";
+    commentsHtml += `<div class="hn-comment"><div class="tagline">${userHtml} ${escapeHtml(c.age)}</div><div class="md">${c.text}</div></div>`;
+  }
+  // Close remaining open divs
+  while (openDivs > 0) {
+    commentsHtml += "</div>";
+    openDivs--;
+  }
+
+  // Clean the comment HTML (strip heavy media, fix links)
+  const page = cheerio.load(`<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${escapeHtml(postTitle)}</title>
+<style>${READER_CSS}</style>
+</head><body>
+<p class="byline"><a href="/">Hacker News</a></p>
+<h1>${postHref ? `<a href="${escapeHtml(postHref)}">${escapeHtml(postTitle)}</a>` : escapeHtml(postTitle)}</h1>
+${topText ? `<div class="md">${topText}</div><hr>` : ""}
+${commentsHtml}
+<div class="chop-footer">
+  <a href="${escapeHtml(sourceUrl)}">Original page</a> --
+  Served by <a href="https://chop.ax">chop.ax</a> --
+  <a href="https://ko-fi.com/chopax">Support this project</a>
+</div>
+</body></html>`);
+
+  rewriteUrls(page, sourceUrl);
+  return page.html();
 }
 
 async function fallbackClean(

@@ -12,6 +12,7 @@ const ALLOWED_DOMAINS: string[] = [
   "theatlantic.com",
   "mirror.co.uk",
   "yle.fi",
+  "cnn.com",
   // Tech
   "news.ycombinator.com",
   "lobste.rs",

@@ -21,8 +21,18 @@ export async function handleProxy(c: Context): Promise<Response> {
   }
 
   if (!isAllowed(url)) {
-    const domains = getAllowedDomains().join(", ");
-    return c.text(`Domain not allowed. Whitelisted domains: ${domains}`, 403);
+    const domains = getAllowedDomains().map(d => `<li>${d}</li>`).join("\n");
+    const escaped = url.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+    return c.html(`<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Domain not allowed - chop.ax</title>
+<style>body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;max-width:680px;margin:0 auto;padding:40px 20px;color:#222}a{color:#06c}</style>
+</head><body>
+<h1>Domain not allowed</h1>
+<p>You can still visit the original page: <a href="${escaped}">${escaped}</a></p>
+<p>Whitelisted domains:</p>
+<ul>${domains}</ul>
+</body></html>`, 403);
   }
 
   // Direct media URLs -- serve a lightweight wrapper page.
