@@ -35,6 +35,27 @@ export async function handleProxy(c: Context): Promise<Response> {
 </body></html>`, 403);
   }
 
+  // Reddit video URLs -- serve a lightweight HLS player page
+  if (isRedditVideo(url)) {
+    const videoId = new URL(url).pathname.split("/")[1];
+    const hlsUrl = `https://v.redd.it/${videoId}/HLSPlaylist.m3u8`;
+    return c.html(`<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>chop.ax</title>
+<style>body{margin:0;display:flex;justify-content:center;align-items:center;min-height:100vh;background:#111}video{max-width:100%;max-height:100vh}</style>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@latest/dist/hls.min.js"></script>
+</head><body>
+<video id="v" controls autoplay playsinline></video>
+<script>
+var v=document.getElementById("v"),u="${hlsUrl}";
+if(v.canPlayType("application/vnd.apple.mpegurl")){v.src=u}
+else if(Hls.isSupported()){var h=new Hls();h.loadSource(u);h.attachMedia(v)}
+</script>
+</body></html>`);
+  }
+
   // Direct media URLs -- serve a lightweight wrapper page.
   // Embedding as <img> makes the browser send Sec-Fetch-Dest: image
   // and a Referer header, so Reddit/Imgur serve the file normally.
@@ -182,6 +203,14 @@ const MEDIA_HOSTS = new Set([
   "preview.redd.it",
   "i.imgur.com",
 ]);
+
+function isRedditVideo(url: string): boolean {
+  try {
+    return new URL(url).hostname === "v.redd.it";
+  } catch {
+    return false;
+  }
+}
 
 function isDirectMedia(url: string): boolean {
   try {
