@@ -9,8 +9,9 @@ let activeRenders = 0;
 const inflight = new Map<string, Promise<string>>();
 
 export async function handleProxy(c: Context): Promise<Response> {
-  const rawUrl = c.req.path.slice(1);
-  if (!rawUrl) return c.text("No URL provided", 400);
+  const reqUrl = new URL(c.req.url);
+  const rawUrl = reqUrl.pathname.slice(1) + reqUrl.search;
+  if (!rawUrl || rawUrl === "?") return c.text("No URL provided", 400);
 
   let url: string;
   try {
