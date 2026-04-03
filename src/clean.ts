@@ -190,6 +190,15 @@ async function fallbackClean(
   $("script, noscript").remove();
   $("video, iframe, object, embed").remove();
 
+  // Preserve Reddit "N comments" links before stripping button bars
+  $(".flat-list.buttons").each((_, el) => {
+    const list = $(el);
+    const commentsLink = list.find("a.comments").first();
+    if (commentsLink.length) {
+      list.before(commentsLink);
+    }
+  });
+
   // Remove common non-content elements
   $(
     "nav, header, footer, aside, .sidebar, .side, .nav, .menu, .header, " +
