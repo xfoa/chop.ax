@@ -75,12 +75,12 @@ export async function cleanHtml(
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>${escapeHtml(article.title || "")}</title>
+  <title>${article.title || ""}</title>
   <style>${READER_CSS}</style>
 </head>
 <body>
-  <h1>${escapeHtml(article.title || "")}</h1>
-  ${article.byline ? `<p class="byline">${escapeHtml(article.byline)}</p>` : ""}
+  <h1>${article.title || ""}</h1>
+  ${article.byline ? `<p class="byline">${article.byline}</p>` : ""}
   <article>${article.content}</article>
   <div class="chop-footer">
     <a href="${escapeHtml(sourceUrl)}">Original page</a> --
