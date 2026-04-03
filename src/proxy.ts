@@ -160,6 +160,11 @@ function normalizeUrl(raw: string): string {
     parsed.hostname === "reddit.com" ||
     parsed.hostname === "www.reddit.com"
   ) {
+    // /gallery/ID -> /comments/ID (old Reddit has no gallery route)
+    const galleryMatch = parsed.pathname.match(/^\/gallery\/(\w+)/);
+    if (galleryMatch) {
+      parsed.pathname = `/comments/${galleryMatch[1]}`;
+    }
     parsed.hostname = "old.reddit.com";
   }
 

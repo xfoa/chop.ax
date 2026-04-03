@@ -36,6 +36,7 @@ const READER_CSS = `
   /* HN comment depth */
   .hn-comment { margin: 8px 0; padding: 4px 0; }
   .hn-indent { margin-left: 20px; padding-left: 8px; border-left: 2px solid #ddd; }
+  .gallery-img { max-width: 100%; height: auto; display: block; margin: 12px 0; }
 `;
 
 export async function cleanHtml(
@@ -199,6 +200,29 @@ async function fallbackClean(
     }
   });
 
+  // Expand Reddit gallery posts: replace tiny thumbnails with full-size images
+  $(".media-gallery").each((_, el) => {
+    const gallery = $(el);
+    const ids: string[] = [];
+    gallery.find(".gallery-tile[data-media-id]").each((_, tile) => {
+      const mediaId = $(tile).attr("data-media-id");
+      if (mediaId) ids.push(mediaId);
+    });
+    if (ids.length) {
+      const images = ids
+        .map((id) => `<img class="gallery-img" src="https://i.redd.it/${id}.jpg" alt="" loading="lazy">`)
+        .join("\n");
+      // Insert images before the .expando parent (which gets removed later)
+      const expando = gallery.closest(".expando");
+      if (expando.length) {
+        expando.after(images);
+      } else {
+        gallery.after(images);
+      }
+      gallery.remove();
+    }
+  });
+
   // Remove common non-content elements
   $(
     "nav, header, footer, aside, .sidebar, .side, .nav, .menu, .header, " +
@@ -241,7 +265,7 @@ async function fallbackClean(
   const KEEP_CLASSES = new Set([
     "comment", "child", "tagline", "author", "md",
     "entry", "content", "commentarea", "title",
-    "chop-footer",
+    "chop-footer", "gallery-img",
   ]);
   $("[class]").each((_, el) => {
     const elem = $(el);
@@ -306,6 +330,8 @@ function stripHeavyMedia($: cheerio.CheerioAPI): void {
 
   $("img").each((_, el) => {
     const elem = $(el);
+    // Preserve gallery images we injected
+    if (elem.hasClass("gallery-img")) return;
     const w = parseInt(elem.attr("width") || "0", 10);
     const h = parseInt(elem.attr("height") || "0", 10);
 
