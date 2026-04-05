@@ -1,6 +1,6 @@
 # chop.ax
 
-Web proxy that strips bloat from pages for low-bandwidth browsing. Visit `chop.ax/<url>` to get a cleaned, lightweight version of any whitelisted page.
+Web proxy that strips bloat from pages for low-bandwidth browsing. Visit `chop.ax/<url>` to get a clean, lightweight version of a page on any whitelisted domain.
 
 ## Features
 
