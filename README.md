@@ -10,9 +10,6 @@ Web proxy that strips bloat from pages for low-bandwidth browsing. Visit `chop.a
 - Worker thread pool for parallel HTML cleaning
 - Redis caching (1hr TTL)
 - Per-user and per-IP rate limiting
-- Reddit galleries, comments, video (HLS.js)
-- Hacker News threaded comments
-- Imgur album support
 - Domain whitelist
 
 ## Requirements
