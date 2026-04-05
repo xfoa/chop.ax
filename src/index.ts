@@ -1,14 +1,12 @@
 import { Hono } from "hono";
 import { handleProxy, RENDER_TIMEOUT } from "./proxy";
-import { getAllowedDomains } from "./whitelist";
+import { getAllowedDomainsHtml } from "./whitelist";
 
 const app = new Hono();
 
 // Landing page
 app.get("/", (c) => {
-  const domains = getAllowedDomains()
-    .map((d) => `<li>${d}</li>`)
-    .join("");
+  const domains = getAllowedDomainsHtml();
 
   return c.html(`<!DOCTYPE html>
 <html lang="en">
@@ -23,6 +21,8 @@ app.get("/", (c) => {
     input[type="text"] { width: 100%; padding: 8px; font-size: 16px;
            box-sizing: border-box; }
     button { padding: 8px 16px; font-size: 16px; margin-top: 8px; }
+    h4 { margin: 12px 0 4px; }
+    ul { margin: 0 0 8px; padding-left: 20px; }
   </style>
 </head>
 <body>
@@ -33,7 +33,7 @@ app.get("/", (c) => {
     <button type="submit">Chop it</button>
   </form>
   <h3>Allowed domains</h3>
-  <ul>${domains}</ul>
+  ${domains}
 </body>
 </html>`);
 });

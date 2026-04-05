@@ -2,7 +2,7 @@ import { randomUUID } from "crypto";
 import type { Context } from "hono";
 import { getCookie, setCookie } from "hono/cookie";
 import { getConnInfo } from "hono/bun";
-import { isAllowed, getAllowedDomains } from "./whitelist";
+import { isAllowed, getAllowedDomainsHtml } from "./whitelist";
 import { getCached, setCache } from "./cache";
 import { renderPage, fetchPage, collectImgurImages } from "./browser";
 import { cleanInWorker } from "./worker-pool";
@@ -75,17 +75,17 @@ export async function handleProxy(c: Context): Promise<Response> {
 
   if (!isAllowed(url)) {
     console.warn(`[403] Domain not allowed: ${url} ${client}`);
-    const domains = getAllowedDomains().map(d => `<li>${d}</li>`).join("\n");
+    const domains = getAllowedDomainsHtml();
     const escaped = url.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
     return c.html(`<!DOCTYPE html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Domain not allowed - chop.ax</title>
-<style>body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;max-width:680px;margin:0 auto;padding:40px 20px;color:#222}a{color:#06c}</style>
+<style>body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;max-width:680px;margin:0 auto;padding:40px 20px;color:#222}a{color:#06c}h4{margin:12px 0 4px}ul{margin:0 0 8px;padding-left:20px}</style>
 </head><body>
 <h1>Domain not allowed</h1>
 <p>You can still visit the original page: <a href="${escaped}">${escaped}</a></p>
-<p>Whitelisted domains:</p>
-<ul>${domains}</ul>
+<h3>Whitelisted domains</h3>
+${domains}
 </body></html>`, 403);
   }
 
