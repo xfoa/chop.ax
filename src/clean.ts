@@ -36,13 +36,14 @@ const READER_CSS = `
   /* HN comment depth */
   .hn-comment { margin: 8px 0; padding: 4px 0; }
   .hn-indent { margin-left: 20px; padding-left: 8px; border-left: 2px solid #ddd; }
-  .gallery-img { max-width: 100%; height: auto; display: block; margin: 12px 0; }
+  .gallery-img { max-width: 200px; height: auto; display: inline-block; margin: 4px; }
 `;
 
 export async function cleanHtml(
   html: string,
   css: string,
-  sourceUrl: string
+  sourceUrl: string,
+  galleryPreviews?: Record<string, string>
 ): Promise<string> {
   // HN comment pages get special treatment to preserve threading
   const parsedUrl = new URL(sourceUrl);
@@ -52,7 +53,7 @@ export async function cleanHtml(
 
   // Skip Readability for listing/index pages (e.g. subreddit fronts, HN)
   if (isListingPage(sourceUrl)) {
-    return fallbackClean(html, css, sourceUrl);
+    return fallbackClean(html, css, sourceUrl, galleryPreviews);
   }
 
   // Run Readability to extract article content
@@ -60,14 +61,14 @@ export async function cleanHtml(
   const doc = dom.window.document;
 
   if (!isProbablyReaderable(doc)) {
-    return fallbackClean(html, css, sourceUrl);
+    return fallbackClean(html, css, sourceUrl, galleryPreviews);
   }
 
   const reader = new Readability(doc);
   const article = reader.parse();
 
   if (!article) {
-    return fallbackClean(html, css, sourceUrl);
+    return fallbackClean(html, css, sourceUrl, galleryPreviews);
   }
 
   // Build a clean reader-view page
@@ -183,7 +184,8 @@ ${commentsHtml}
 async function fallbackClean(
   html: string,
   css: string,
-  sourceUrl: string
+  sourceUrl: string,
+  galleryPreviews?: Record<string, string>
 ): Promise<string> {
   const $ = cheerio.load(html);
 
@@ -200,7 +202,7 @@ async function fallbackClean(
     }
   });
 
-  // Expand Reddit gallery posts: replace tiny thumbnails with full-size images
+  // Expand Reddit gallery posts: use preview thumbnails when available
   $(".media-gallery").each((_, el) => {
     const gallery = $(el);
     const ids: string[] = [];
@@ -210,7 +212,11 @@ async function fallbackClean(
     });
     if (ids.length) {
       const images = ids
-        .map((id) => `<img class="gallery-img" src="https://i.redd.it/${id}.jpg" alt="" loading="lazy">`)
+        .map((id) => {
+          const full = `https://i.redd.it/${id}.jpg`;
+          const thumb = galleryPreviews?.[id] || full;
+          return `<a href="${full}"><img class="gallery-img" src="${thumb}" alt="" loading="lazy"></a>`;
+        })
         .join("\n");
       // Insert images before the .expando parent (which gets removed later)
       const expando = gallery.closest(".expando");

@@ -228,10 +228,10 @@ async function processPage(url: string): Promise<string> {
       }
     }
 
-    const { html, css } = needsPuppeteer(url)
+    const rendered = needsPuppeteer(url)
       ? await renderPage(url)
       : await fetchPage(url);
-    const cleaned = await cleanInWorker(html, css, url);
+    const cleaned = await cleanInWorker(rendered.html, rendered.css, url, rendered.galleryPreviews);
     await setCache(url, cleaned);
     return cleaned;
   } finally {

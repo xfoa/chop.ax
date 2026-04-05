@@ -40,7 +40,7 @@ export async function getBrowser(): Promise<Browser> {
 
 export async function renderPage(
   url: string
-): Promise<{ html: string; css: string }> {
+): Promise<{ html: string; css: string; galleryPreviews?: Record<string, string> }> {
   const b = await getBrowser();
   const page = await b.newPage();
 
@@ -63,16 +63,50 @@ export async function renderPage(
     });
 
     const html = await page.content();
-    return { html, css };
+
+    // Extract Reddit gallery preview URLs from JSON API
+    let galleryPreviews: Record<string, string> | undefined;
+    if (url.includes("reddit.com")) {
+      galleryPreviews = await fetchGalleryPreviews(url);
+    }
+
+    return { html, css, galleryPreviews };
   } finally {
     await page.close();
+  }
+}
+
+// Fetch gallery preview URLs from Reddit's JSON API
+async function fetchGalleryPreviews(url: string): Promise<Record<string, string> | undefined> {
+  try {
+    const jsonUrl = url.replace(/\/?$/, ".json");
+    const resp = await fetch(jsonUrl, {
+      headers: { "User-Agent": "Mozilla/5.0 (compatible; chop.ax/0.1)" },
+      redirect: "follow",
+    });
+    if (!resp.ok) return undefined;
+    const data = await resp.json() as any;
+    const post = data?.[0]?.data?.children?.[0]?.data;
+    const meta = post?.media_metadata;
+    if (!meta || typeof meta !== "object") return undefined;
+
+    const map: Record<string, string> = {};
+    for (const [id, info] of Object.entries(meta) as [string, any][]) {
+      const previews = info?.p;
+      if (!Array.isArray(previews) || previews.length === 0) continue;
+      const pick = previews.find((p: any) => p.x >= 320) || previews[previews.length - 1];
+      if (pick?.u) map[id] = pick.u.replace(/&amp;/g, "&");
+    }
+    return Object.keys(map).length > 0 ? map : undefined;
+  } catch {
+    return undefined;
   }
 }
 
 // Simple HTTP fetch for server-rendered sites (no JS needed)
 export async function fetchPage(
   url: string
-): Promise<{ html: string; css: string }> {
+): Promise<{ html: string; css: string; galleryPreviews?: Record<string, string> }> {
   const resp = await fetch(url, {
     headers: {
       "User-Agent": "Mozilla/5.0 (compatible; chop.ax/0.1)",

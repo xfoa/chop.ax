@@ -13,7 +13,7 @@ interface PoolEntry {
 }
 
 const pool: PoolEntry[] = [];
-const queue: { data: { html: string; css: string; sourceUrl: string }; job: PendingJob }[] = [];
+const queue: { data: { html: string; css: string; sourceUrl: string; galleryPreviews?: Record<string, string> }; job: PendingJob }[] = [];
 
 function createWorker(): PoolEntry {
   const worker = new Worker(new URL("./clean-worker.ts", import.meta.url).href);
@@ -64,10 +64,11 @@ for (let i = 0; i < WORKER_COUNT; i++) {
 export function cleanInWorker(
   html: string,
   css: string,
-  sourceUrl: string
+  sourceUrl: string,
+  galleryPreviews?: Record<string, string>
 ): Promise<string> {
   return new Promise((resolve, reject) => {
-    const data = { html, css, sourceUrl };
+    const data = { html, css, sourceUrl, galleryPreviews };
     const job: PendingJob = { resolve, reject };
 
     // Try to dispatch immediately

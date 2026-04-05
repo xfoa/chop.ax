@@ -45,6 +45,27 @@ app.get("/go", (c) => {
   return c.redirect("/" + url);
 });
 
+// Image proxy for cross-origin thumbnails
+app.get("/img/*", async (c) => {
+  const imgUrl = c.req.path.slice(5); // strip "/img/"
+  if (!imgUrl) return c.text("Missing URL", 400);
+  try {
+    const resp = await fetch(imgUrl, {
+      headers: { "User-Agent": "Mozilla/5.0 (compatible; chop.ax/0.1)" },
+      redirect: "follow",
+    });
+    if (!resp.ok) return c.text("Upstream error", resp.status as any);
+    return new Response(resp.body, {
+      headers: {
+        "Content-Type": resp.headers.get("Content-Type") || "image/jpeg",
+        "Cache-Control": "public, max-age=86400",
+      },
+    });
+  } catch {
+    return c.text("Failed to fetch image", 502);
+  }
+});
+
 // Ignore browser-initiated requests
 app.get("/favicon.ico", (c) => c.body(null, 204));
 app.get("/robots.txt", (c) => c.text("User-agent: *\nDisallow: /"));
