@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { handleProxy } from "./proxy";
+import { handleProxy, RENDER_TIMEOUT } from "./proxy";
 import { getAllowedDomains } from "./whitelist";
 
 const app = new Hono();
@@ -45,10 +45,15 @@ app.get("/go", (c) => {
   return c.redirect("/" + url);
 });
 
+// Ignore browser-initiated requests
+app.get("/favicon.ico", (c) => c.body(null, 204));
+app.get("/robots.txt", (c) => c.text("User-agent: *\nDisallow: /"));
+
 // Everything else -> proxy handler
 app.get("*", handleProxy);
 
 export default {
   port: Number(process.env.PORT) || 3000,
   fetch: app.fetch,
+  idleTimeout: Math.ceil(RENDER_TIMEOUT / 1000) + 5,
 };

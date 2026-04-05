@@ -1,26 +1,80 @@
+import { randomUUID } from "crypto";
 import type { Context } from "hono";
+import { getCookie, setCookie } from "hono/cookie";
+import { getConnInfo } from "hono/bun";
 import { isAllowed, getAllowedDomains } from "./whitelist";
 import { getCached, setCache } from "./cache";
-import { renderPage, collectImgurImages } from "./browser";
-import { cleanHtml } from "./clean";
+import { renderPage, fetchPage, collectImgurImages } from "./browser";
+import { cleanInWorker } from "./worker-pool";
 
-const MAX_CONCURRENT = 5;
+const MAX_CONCURRENT = Number(process.env.MAX_CONCURRENT) || 32;
+export const RENDER_TIMEOUT = Number(process.env.RENDER_TIMEOUT) || 10_000;
 let activeRenders = 0;
 const inflight = new Map<string, Promise<string>>();
+
+// Rate limiting: sliding window counters for renders only
+const RATE_WINDOW = Number(process.env.RATE_WINDOW) || 60_000;
+const RATE_PER_USER = Number(process.env.RATE_PER_USER) || 10;
+const RATE_PER_IP = Number(process.env.RATE_PER_IP) || 30;
+const renderHits = new Map<string, number[]>();
+
+function checkRate(key: string, limit: number): boolean {
+  const now = Date.now();
+  const hits = renderHits.get(key) || [];
+  const recent = hits.filter((t) => now - t < RATE_WINDOW);
+  renderHits.set(key, recent);
+  return recent.length >= limit;
+}
+
+function recordHit(key: string): void {
+  const now = Date.now();
+  const hits = renderHits.get(key) || [];
+  hits.push(now);
+  renderHits.set(key, hits);
+}
+
+// Periodic cleanup of stale entries
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, hits] of renderHits) {
+    const recent = hits.filter((t) => now - t < RATE_WINDOW);
+    if (recent.length === 0) renderHits.delete(key);
+    else renderHits.set(key, recent);
+  }
+}, RATE_WINDOW);
 
 export async function handleProxy(c: Context): Promise<Response> {
   const reqUrl = new URL(c.req.url);
   const rawUrl = reqUrl.pathname.slice(1) + reqUrl.search;
-  if (!rawUrl || rawUrl === "?") return c.text("No URL provided", 400);
+
+  // Resolve client identity early so all log lines can include it
+  let userId = getCookie(c, "chop_id");
+  if (!userId) {
+    userId = randomUUID();
+    setCookie(c, "chop_id", userId, { maxAge: 86400 * 365, httpOnly: true, sameSite: "Lax" });
+  }
+  const rawIp = c.req.header("x-forwarded-for")?.split(",")[0]?.trim()
+    || c.req.header("x-real-ip")
+    || getConnInfo(c).remote.address
+    || "unknown";
+  const clientIp = rawIp.replace(/^::ffff:/, "");
+  const client = `ip=${clientIp} user=${userId}`;
+
+  if (!rawUrl || rawUrl === "?") {
+    console.warn(`[400] No URL provided ${client}`);
+    return c.text("No URL provided", 400);
+  }
 
   let url: string;
   try {
     url = normalizeUrl(rawUrl);
   } catch {
+    console.warn(`[400] Invalid URL: ${rawUrl} ${client}`);
     return c.text("Invalid URL", 400);
   }
 
   if (!isAllowed(url)) {
+    console.warn(`[403] Domain not allowed: ${url} ${client}`);
     const domains = getAllowedDomains().map(d => `<li>${d}</li>`).join("\n");
     const escaped = url.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
     return c.html(`<!DOCTYPE html>
@@ -74,31 +128,77 @@ else if(Hls.isSupported()){var h=new Hls();h.loadSource(u);h.attachMedia(v)}
   const cached = await getCached(url);
   if (cached) return c.html(cached);
 
+  // Rate limit renders: per-user (cookie) and per-IP
+  const userKey = `user:${userId}`;
+  const ipKey = `ip:${clientIp}`;
+  const userLimited = checkRate(userKey, RATE_PER_USER);
+  const ipLimited = checkRate(ipKey, RATE_PER_IP);
+
+  if (userLimited) {
+    console.warn(`[429] Rate limited (per-user): ${url} ${client}`);
+    return c.text("Rate limit exceeded. Please wait a moment.", 429);
+  }
+  if (ipLimited) {
+    console.warn(`[429] Rate limited (per-IP): ${url} ${client}`);
+    return c.text("Rate limit exceeded. Please wait a moment.", 429);
+  }
+
+  recordHit(userKey);
+  recordHit(ipKey);
+
   // Dedup in-flight requests for the same URL
   if (inflight.has(url)) {
     try {
       const html = await inflight.get(url)!;
       return c.html(html);
     } catch {
+      console.warn(`[502] In-flight render failed: ${url} ${client}`);
       return c.text("Failed to process page", 502);
     }
   }
 
   if (activeRenders >= MAX_CONCURRENT) {
+    console.warn(`[503] Server busy (${activeRenders}/${MAX_CONCURRENT} renders): ${url} ${client}`);
     return c.text("Server busy, try again shortly", 503);
   }
 
   const promise = processPage(url);
   inflight.set(url, promise);
+  // Prevent unhandled rejection if timeout wins the race
+  promise.catch(() => {});
+
+  const timeout = new Promise<never>((_, reject) =>
+    setTimeout(() => reject(new Error("Render timed out")), RENDER_TIMEOUT)
+  );
 
   try {
-    const html = await promise;
+    const html = await Promise.race([promise, timeout]);
     return c.html(html);
   } catch (err) {
-    console.error(`Failed to process ${url}:`, err);
-    return c.text("Failed to fetch and process the page", 502);
+    const isTimeout = err instanceof Error && err.message === "Render timed out";
+    const msg = isTimeout
+      ? "Page took too long to render"
+      : "Failed to fetch and process the page";
+    const code = isTimeout ? 504 : 502;
+    console.warn(`[${code}] ${msg}: ${url} ${client}`);
+    return c.text(msg, code);
   } finally {
     inflight.delete(url);
+  }
+}
+
+// Sites that need JS rendering (Puppeteer). Everything else uses simple fetch.
+const NEEDS_PUPPETEER = new Set([
+  "reddit.com", "old.reddit.com", "www.reddit.com",
+  "imgur.com", "www.imgur.com",
+]);
+
+function needsPuppeteer(url: string): boolean {
+  try {
+    const host = new URL(url).hostname;
+    return NEEDS_PUPPETEER.has(host);
+  } catch {
+    return true; // default to Puppeteer if unsure
   }
 }
 
@@ -128,8 +228,10 @@ async function processPage(url: string): Promise<string> {
       }
     }
 
-    const { html, css } = await renderPage(url);
-    const cleaned = await cleanHtml(html, css, url);
+    const { html, css } = needsPuppeteer(url)
+      ? await renderPage(url)
+      : await fetchPage(url);
+    const cleaned = await cleanInWorker(html, css, url);
     await setCache(url, cleaned);
     return cleaned;
   } finally {

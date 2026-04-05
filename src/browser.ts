@@ -11,21 +11,31 @@ puppeteer.use(
   })
 );
 
-let browser: Browser | null = null;
+const POOL_SIZE = Number(process.env.BROWSER_POOL) || 3;
+console.log(`Browser pool size: ${POOL_SIZE}`)
+const pool: (Browser | null)[] = new Array(POOL_SIZE).fill(null);
+let robin = 0;
+
+async function launchBrowser(): Promise<Browser> {
+  return (await puppeteer.launch({
+    headless: true,
+    args: [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+      "--disable-gpu",
+    ],
+  })) as Browser;
+}
 
 export async function getBrowser(): Promise<Browser> {
-  if (!browser || !browser.connected) {
-    browser = (await puppeteer.launch({
-      headless: true,
-      args: [
-        "--no-sandbox",
-        "--disable-setuid-sandbox",
-        "--disable-dev-shm-usage",
-        "--disable-gpu",
-      ],
-    })) as Browser;
+  const idx = robin;
+  robin = (robin + 1) % POOL_SIZE;
+
+  if (!pool[idx] || !pool[idx]!.connected) {
+    pool[idx] = await launchBrowser();
   }
-  return browser;
+  return pool[idx]!;
 }
 
 export async function renderPage(
@@ -57,6 +67,23 @@ export async function renderPage(
   } finally {
     await page.close();
   }
+}
+
+// Simple HTTP fetch for server-rendered sites (no JS needed)
+export async function fetchPage(
+  url: string
+): Promise<{ html: string; css: string }> {
+  const resp = await fetch(url, {
+    headers: {
+      "User-Agent": "Mozilla/5.0 (compatible; chop.ax/0.1)",
+      "Accept": "text/html",
+    },
+    redirect: "follow",
+  });
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  const html = await resp.text();
+  // No external CSS extraction -- Readability/fallback don't need it for static sites
+  return { html, css: "" };
 }
 
 // Scroll an Imgur album page and collect image IDs incrementally,
@@ -101,3 +128,17 @@ export async function collectImgurImages(url: string): Promise<string[]> {
     await page.close();
   }
 }
+
+// Kill all browser instances on process exit
+async function closeAll() {
+  for (const b of pool) {
+    if (b && b.connected) {
+      try { await b.close(); } catch {}
+    }
+  }
+  pool.fill(null);
+}
+
+process.on("exit", () => { closeAll(); });
+process.on("SIGINT", () => { closeAll().then(() => process.exit(0)); });
+process.on("SIGTERM", () => { closeAll().then(() => process.exit(0)); });

@@ -13,6 +13,7 @@ const ALLOWED_DOMAINS: string[] = [
   "mirror.co.uk",
   "yle.fi",
   "cnn.com",
+  "mtvuutiset.fi",
   // Tech
   "news.ycombinator.com",
   "lobste.rs",
