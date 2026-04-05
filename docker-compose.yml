@@ -1,0 +1,32 @@
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - REDIS_URL=redis://redis:6379
+      - BROWSER_POOL=3
+      - CLEAN_WORKERS=4
+      - MAX_CONCURRENT=32
+      - RENDER_TIMEOUT=10000
+      - RATE_WINDOW=60000
+      - RATE_PER_USER=10
+      - RATE_PER_IP=30
+    depends_on:
+      redis:
+        condition: service_started
+    security_opt:
+      - seccomp=unconfined
+    shm_size: "1gb"
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+
+volumes:
+  redis-data:

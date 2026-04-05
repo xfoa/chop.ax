@@ -19,6 +19,7 @@ let robin = 0;
 async function launchBrowser(): Promise<Browser> {
   return (await puppeteer.launch({
     headless: true,
+    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
     args: [
       "--no-sandbox",
       "--disable-setuid-sandbox",
