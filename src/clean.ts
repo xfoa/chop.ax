@@ -173,7 +173,8 @@ ${commentsHtml}
 <div class="chop-footer">
   <a href="${escapeHtml(sourceUrl)}">Original page</a> --
   Served by <a href="https://chop.ax">chop.ax</a> --
-  <a href="https://ko-fi.com/chopax">Support this project</a>
+  <a href="https://ko-fi.com/xfoax">Support this project</a> --
+  <a href="https://github.com/xfoa/chop.ax">Contribute</a>
 </div>
 </body></html>`);
 
