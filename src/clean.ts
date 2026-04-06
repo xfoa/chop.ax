@@ -1,5 +1,5 @@
 import { Readability, isProbablyReaderable } from "@mozilla/readability";
-import { JSDOM } from "jsdom";
+import { JSDOM, VirtualConsole } from "jsdom";
 import * as cheerio from "cheerio";
 import { PurgeCSS } from "purgecss";
 import { transform } from "lightningcss";
@@ -43,7 +43,8 @@ export async function cleanHtml(
   html: string,
   css: string,
   sourceUrl: string,
-  galleryPreviews?: Record<string, string>
+  galleryPreviews?: Record<string, string>,
+  client?: string
 ): Promise<string> {
   // HN comment pages get special treatment to preserve threading
   const parsedUrl = new URL(sourceUrl);
@@ -51,27 +52,66 @@ export async function cleanHtml(
     return cleanHnComments(html, sourceUrl);
   }
 
+  let result: string;
+
   // Skip Readability for listing/index pages (e.g. subreddit fronts, HN)
   if (isListingPage(sourceUrl)) {
-    return fallbackClean(html, css, sourceUrl, galleryPreviews);
+    result = await fallbackClean(html, css, sourceUrl, galleryPreviews);
+  } else {
+    // Run Readability to extract article content
+    const virtualConsole = new VirtualConsole();
+    virtualConsole.on("error", (msg: string) => {
+      console.warn(`[jsdom] ${msg} url=${sourceUrl} ${client || ""}`);
+    });
+    const dom = new JSDOM(html, { url: sourceUrl, virtualConsole });
+    const doc = dom.window.document;
+
+    if (!isProbablyReaderable(doc)) {
+      result = await fallbackClean(html, css, sourceUrl, galleryPreviews);
+    } else {
+      const reader = new Readability(doc);
+      const article = reader.parse();
+
+      if (!article) {
+        result = await fallbackClean(html, css, sourceUrl, galleryPreviews);
+      } else {
+        result = cleanReadabilityArticle(article, sourceUrl);
+      }
+    }
   }
 
-  // Run Readability to extract article content
-  const dom = new JSDOM(html, { url: sourceUrl });
-  const doc = dom.window.document;
-
-  if (!isProbablyReaderable(doc)) {
-    return fallbackClean(html, css, sourceUrl, galleryPreviews);
+  // Detect near-empty output (JS-dependent pages that render nothing useful)
+  const visible = result
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const wordCount = visible.split(" ").length;
+  if (wordCount < 80) {
+    const escaped = escapeHtml(sourceUrl);
+    return `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>chop.ax</title><style>${READER_CSS}</style></head>
+<body>
+<h1>This page requires JavaScript</h1>
+<p>This page relies on JavaScript to display its content and cannot be simplified.</p>
+<p>Visit the original page: <a href="${escaped}">${escaped}</a></p>
+<div class="chop-footer">
+  <a href="${escaped}">Original page</a> --
+  Served by <a href="https://chop.ax">chop.ax</a> --
+  <a href="https://ko-fi.com/chopax">Support this project</a> --
+  <a href="https://github.com/xfoa/chop.ax">Contribute</a>
+</div>
+</body></html>`;
   }
 
-  const reader = new Readability(doc);
-  const article = reader.parse();
+  return result;
+}
 
-  if (!article) {
-    return fallbackClean(html, css, sourceUrl, galleryPreviews);
-  }
-
-  // Build a clean reader-view page
+function cleanReadabilityArticle(
+  article: { title?: string | null; byline?: string | null; content?: string | null; lang?: string | null; dir?: string | null },
+  sourceUrl: string
+): string {
   const $ = cheerio.load(`<!DOCTYPE html>
 <html lang="${article.lang || "en"}" dir="${article.dir || "ltr"}">
 <head>
@@ -87,18 +127,14 @@ export async function cleanHtml(
   <div class="chop-footer">
     <a href="${escapeHtml(sourceUrl)}">Original page</a> --
     Served by <a href="https://chop.ax">chop.ax</a> --
-    <a href="https://ko-fi.com/chopax">Support this project</a>
+    <a href="https://ko-fi.com/chopax">Support this project</a> --
+  <a href="https://github.com/xfoa/chop.ax">Contribute</a>
   </div>
 </body>
 </html>`);
 
-  // Strip any scripts Readability may have left
   $("script").remove();
-
-  // Strip images without explicit small dimensions
   stripHeavyMedia($);
-
-  // Rewrite links through proxy
   rewriteUrls($, sourceUrl);
 
   return $.html();
@@ -188,6 +224,9 @@ async function fallbackClean(
   sourceUrl: string,
   galleryPreviews?: Record<string, string>
 ): Promise<string> {
+  // Strip IE conditional comments (can hide scripts)
+  html = html.replace(/<!--\[if[^\]]*\]>[\s\S]*?<!\[endif\]-->/gi, "");
+
   const $ = cheerio.load(html);
 
   // Strip scripts
@@ -325,14 +364,28 @@ async function fallbackClean(
 
   rewriteUrls($, sourceUrl);
 
+  // Final safety pass: remove any scripts that survived earlier stripping
+  // (e.g. inside conditional comments, re-exposed by DOM unwrapping)
+  $("script").remove();
+
   $("body").append(
     `<div class="chop-footer">` +
       `<a href="${escapeHtml(sourceUrl)}">Original page</a> -- ` +
       `Served by <a href="https://chop.ax">chop.ax</a> -- ` +
-      `<a href="https://ko-fi.com/chopax">Support this project</a></div>`
+      `<a href="https://ko-fi.com/chopax">Support this project</a></div> -- ` +
+      `<a href="https://github.com/xfoa/chop.ax">Contribute</a>`
   );
 
-  return $.html();
+  let out = $.html();
+
+  // Final safety: regex-strip any <script> tags that survived DOM-based removal
+  // (e.g. scripts inside HTML comments that Cheerio can't reach as DOM nodes)
+  // Match paired <script>...</script> first, then any remaining opener tags
+  out = out.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "");
+  out = out.replace(/<script\b[^>]*>[^]*?(?=<[a-z])/gi, "");
+  out = out.replace(/<script\b[^>]*>[\s\S]*$/gi, "");
+
+  return out;
 }
 
 function stripHeavyMedia($: cheerio.CheerioAPI): void {
@@ -420,6 +473,12 @@ function rewriteUrls($: cheerio.CheerioAPI, sourceUrl: string): void {
 
     try {
       const absolute = new URL(href, base).href;
+      const host = new URL(absolute).hostname;
+      // Skip broken URLs like "https://undefined" (no dot = not a real domain)
+      if (!host.includes(".")) {
+        elem.removeAttr("href");
+        return;
+      }
       elem.attr("href", "/" + absolute);
     } catch {
       // Malformed -- leave as-is

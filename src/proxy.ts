@@ -167,7 +167,7 @@ else if(Hls.isSupported()){var h=new Hls();h.loadSource(u);h.attachMedia(v)}
     return c.text("Server busy, try again shortly", 503);
   }
 
-  const promise = processPage(url);
+  const promise = processPage(url, client);
   inflight.set(url, promise);
   // Prevent unhandled rejection if timeout wins the race
   promise.catch(() => {});
@@ -181,12 +181,15 @@ else if(Hls.isSupported()){var h=new Hls();h.loadSource(u);h.attachMedia(v)}
     return c.html(html);
   } catch (err) {
     const isTimeout = err instanceof Error && err.message === "Render timed out";
+    const upstream = (err as any)?.upstreamStatus as number | undefined;
     const msg = isTimeout
       ? "Page took too long to render"
-      : "Failed to fetch and process the page";
-    const code = isTimeout ? 504 : 502;
+      : upstream
+        ? `Origin returned HTTP ${upstream}`
+        : "Failed to fetch and process the page";
+    const code = isTimeout ? 504 : upstream || 502;
     console.warn(`[${code}] ${msg}: ${url} ${client}`);
-    return c.text(msg, code);
+    return c.text(msg, code as any);
   } finally {
     inflight.delete(url);
   }
@@ -197,9 +200,15 @@ const NEEDS_PUPPETEER = new Set([
   "reddit.com", "old.reddit.com", "www.reddit.com",
   "imgur.com", "www.imgur.com",
   "france24.com", "www.france24.com",
+  "aljazeera.com", "www.aljazeera.com",
+  "lemonde.fr", "www.lemonde.fr",
   "japantimes.co.jp", "www.japantimes.co.jp",
   "reuters.com", "www.reuters.com",
   "mayoclinic.org", "www.mayoclinic.org",
+  "washingtonpost.com", "www.washingtonpost.com",
+  "nytimes.com", "www.nytimes.com",
+  "blog.adafruit.com",
+  "stacks.cdc.gov",
 ]);
 
 function needsPuppeteer(url: string): boolean {
@@ -211,7 +220,7 @@ function needsPuppeteer(url: string): boolean {
   }
 }
 
-async function processPage(url: string): Promise<string> {
+async function processPage(url: string, client?: string): Promise<string> {
   activeRenders++;
   try {
     // Imgur pages: scroll and collect image IDs incrementally
@@ -240,7 +249,7 @@ async function processPage(url: string): Promise<string> {
     const rendered = needsPuppeteer(url)
       ? await renderPage(url)
       : await fetchPage(url);
-    const cleaned = await cleanInWorker(rendered.html, rendered.css, url, rendered.galleryPreviews);
+    const cleaned = await cleanInWorker(rendered.html, rendered.css, url, rendered.galleryPreviews, client);
     await setCache(url, cleaned);
     return cleaned;
   } finally {

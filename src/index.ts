@@ -27,7 +27,8 @@ app.get("/", (c) => {
 </head>
 <body>
   <h1>chop.ax</h1>
-  <p>Strip the bloat from web pages. Paste a URL below.</p>
+  <p>Strip the bloat from web pages. Paste a URL below.
+     <a href="/about">About</a></p>
   <form action="/go" method="get">
     <input type="text" name="url" placeholder="https://example.com/article" />
     <button type="submit">Chop it</button>
@@ -64,6 +65,69 @@ app.get("/img/*", async (c) => {
   } catch {
     return c.text("Failed to fetch image", 502);
   }
+});
+
+// About page
+app.get("/about", (c) => {
+  return c.html(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>About - chop.ax</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+           Roboto, Arial, sans-serif; max-width: 600px; margin: 40px auto;
+           padding: 0 20px; color: #222; line-height: 1.6; }
+    a { color: #06c; }
+    h1 { margin-bottom: 0.2em; }
+    h1 + p { margin-top: 0; color: #666; }
+    .footer { text-align: center; padding: 20px; margin-top: 40px;
+              border-top: 1px solid #ccc; font-size: 14px; color: #666; }
+  </style>
+</head>
+<body>
+  <h1>chop.ax</h1>
+  <p>Strip the bloat from web pages.</p>
+
+  <h2>What is this?</h2>
+  <p>chop.ax takes cluttered, ad-heavy web pages and returns just the content.</p>
+
+  <h2>How it works</h2>
+  <ol>
+    <li>Paste a URL or prepend <code>chop.ax/</code> to any supported URL.</li>
+    <li>The server fetches the page, extracts the article content, strips
+        scripts, ads, tracking, and unused CSS.</li>
+    <li>You get a small, clean, somewhat-readable page.</li>
+  </ol>
+
+  <h2>What it removes</h2>
+  <ul>
+    <li>JavaScript, tracking pixels, and analytics</li>
+    <li>Ads, pop-ups, and cookie banners</li>
+    <li>Auto-playing video and audio</li>
+    <li>Custom web fonts and unused CSS</li>
+    <li>Social media widgets and comment sections</li>
+  </ul>
+
+  <h2>Limitations</h2>
+  <ul>
+    <li>Only <a href="/">whitelisted domains</a> are supported.</li>
+    <li>Pages that depend entirely on JavaScript to render may not work, but it will do a best-effort attempt to work around this.</li>
+    <li>Interactive features (search, forms, login) are not preserved.</li>
+  </ul>
+
+  <h2>Links</h2>
+  <ul>
+    <li><a href="https://github.com/xfoa/chop.ax">Contribute, report bugs, or run it yourself (GitHub)</a></li>
+    <li><a href="https://ko-fi.com/xfoax">Support this project (Ko-fi)</a></li>
+  </ul>
+
+  <div class="footer">
+    <a href="/">Home</a>
+  </div>
+</body>
+</html>`);
 });
 
 // Ignore browser-initiated requests

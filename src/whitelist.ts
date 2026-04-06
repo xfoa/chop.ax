@@ -41,6 +41,7 @@ const ALLOWED_BY_CATEGORY: Record<string, string[]> = {
   ],
   "Reference": [
     "stackexchange.com",
+    "stackoverflow.blog",
     "stackoverflow.com",
     "wikipedia.org",
     "wikimedia.org",
@@ -53,8 +54,7 @@ const ALLOWED_BY_CATEGORY: Record<string, string[]> = {
     "docs.oracle.com",
     "docs.python.org",
     "learn.microsoft.com",
-    "man7.org",
-    "pkg.go.dev",
+    "typescriptlang.org",
   ],
   "Health": [
     "cdc.gov",
@@ -108,7 +108,6 @@ const ALLOWED_BY_CATEGORY: Record<string, string[]> = {
   "Electronics": [
     "adafruit.com",
     "hackaday.com",
-    "instructables.com",
     "sparkfun.com",
   ],
   "Social": [

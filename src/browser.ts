@@ -172,7 +172,11 @@ export async function fetchPage(
     },
     redirect: "follow",
   });
-  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  if (!resp.ok) {
+    const err = new Error(`HTTP ${resp.status}`) as any;
+    err.upstreamStatus = resp.status;
+    throw err;
+  }
   const html = await resp.text();
   // No external CSS extraction -- Readability/fallback don't need it for static sites
   return { html, css: "" };

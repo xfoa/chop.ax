@@ -56,8 +56,7 @@ domains=(
   "doc.rust-lang.org"
   "docs.python.org"
   "learn.microsoft.com"
-  "man7.org"
-  "pkg.go.dev"
+  "typescriptlang.org"
   # Health
   "cdc.gov"
   "clevelandclinic.org"
@@ -86,7 +85,6 @@ domains=(
   # Electronics
   "adafruit.com"
   "hackaday.com"
-  "instructables.com"
   "sparkfun.com"
   # Social (skip reddit/imgur - need puppeteer, slow)
 )
@@ -105,6 +103,7 @@ for domain in "${domains[@]}"; do
     | grep -vE '\.(css|js|png|jpg|jpeg|gif|svg|ico|woff|xml|json|rss|pdf)' \
     | grep -vE '(login|signup|subscribe|account|auth|privacy|terms|cookie|#)' \
     | grep -vE '(facebook\.com|twitter\.com|instagram\.com|bsky\.app|google\.com|youtube\.com|linkedin\.com|tiktok\.com)' \
+    | grep -vE '(assets\.nhs\.uk|classes\.kingarthurbaking\.com|help\.npr\.org|redcrossblood\.org)' \
     | grep -E '/[a-z0-9].*/' \
     | sort -u \
     | head -5)
