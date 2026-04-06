@@ -4,6 +4,10 @@ import * as cheerio from "cheerio";
 import { PurgeCSS } from "purgecss";
 import { transform } from "lightningcss";
 
+export class ThinContentError extends Error {
+  constructor() { super("Thin content"); this.name = "ThinContentError"; }
+}
+
 const SYSTEM_FONTS =
   '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, ' +
   '"Helvetica Neue", Arial, sans-serif';
@@ -88,21 +92,7 @@ export async function cleanHtml(
     .trim();
   const wordCount = visible.split(" ").length;
   if (wordCount < 80) {
-    const escaped = escapeHtml(sourceUrl);
-    return `<!DOCTYPE html>
-<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>chop.ax</title><style>${READER_CSS}</style></head>
-<body>
-<h1>This page requires JavaScript</h1>
-<p>This page relies on JavaScript to display its content and cannot be simplified.</p>
-<p>Visit the original page: <a href="${escaped}">${escaped}</a></p>
-<div class="chop-footer">
-  <a href="${escaped}">Original page</a> --
-  Served by <a href="https://chop.ax">chop.ax</a> --
-  <a href="https://ko-fi.com/chopax">Support this project</a> --
-  <a href="https://github.com/xfoa/chop.ax">Contribute</a>
-</div>
-</body></html>`;
+    throw new ThinContentError();
   }
 
   return result;
@@ -273,18 +263,45 @@ async function fallbackClean(
   // On listing pages, keep <aside> -- news sites often use it for content sections
   const isListing = isListingPage(sourceUrl);
   const removeSelectors =
-    "nav, header, footer, .sidebar, .side, .nav, .menu, .header, " +
+    "nav, footer, .sidebar, .side, .nav, .menu, .header, " +
     ".footer, .ad, .ads, .advertisement, [role='navigation'], " +
     "[role='banner'], [role='complementary'], [role='contentinfo'], " +
     ".search, .promoted, .sponsorlink, " +
+    "[class*='contribution-prompt'], [class*='login-ribbon'], " +
+    "[class*='auth-flow'], [class*='daily-poll'], " +
+    "[class*='navigation-modal'], [class*='navigation-overlay'], " +
+    "[class*='sponsor'], [class*='native-ad'], " +
+    "[class*='statistics'], [class*='share-pulldown'], " +
+    "[class*='social-container'], " +
     ".midcol, .rank, .score, .loading, .expando, " +
     ".flat-list.buttons, .dropdown, .menuarea, .infobar, " +
     "[class*='reportform'], .login-required, .usertext-edit, " +
     ".footer-parent, .bottommenu, .debuginfo, .morechildren, " +
     ".numchildren, .clearleft, .parent, .child:empty, " +
     "input[type='hidden']" +
-    (isListing ? "" : ", aside");
+    (isListing ? "" : ", aside, header");
   $(removeSelectors).remove();
+
+  // Fix empty overlay links before classes are stripped (needs [class*='title'])
+  $("a[href]").each((_, el) => {
+    const elem = $(el);
+    if (elem.text().trim()) return;
+    const parent = elem.parent();
+    if (!parent.length) return;
+    const titleEl = parent.find("[class*='title'], h1, h2, h3, h4").first();
+    if (titleEl.length) {
+      elem.text(titleEl.text().trim());
+      titleEl.remove();
+      // Add separator before the card container
+      parent.before("<hr>");
+    } else {
+      const text = parent.text().trim();
+      if (text) {
+        const label = text.split("\n")[0].trim().slice(0, 200);
+        if (label) elem.text(label);
+      }
+    }
+  });
 
   // Unwrap forms (keep contents, remove the form wrapper)
   $("form").each((_, el) => {
@@ -347,14 +364,21 @@ async function fallbackClean(
   $("body style").remove();
 
   // Clean up <head>: strip everything except <title> and <meta charset>
-  const title = $("title").first().text();
+  const originTitle = $("title").first().text();
+  const host = new URL(sourceUrl).hostname.replace(/^www\./, "");
+  const pageTitle = isListing ? host : originTitle;
   $("head").empty();
   $("head").append(
     `<meta charset="utf-8">` +
       `<meta name="viewport" content="width=device-width, initial-scale=1">` +
-      `<title>${escapeHtml(title)}</title>` +
+      `<title>${escapeHtml(pageTitle)}</title>` +
       `<style>${READER_CSS}</style>`
   );
+
+  // Add site heading for listing pages
+  if (isListing) {
+    $("body").prepend(`<h1>${escapeHtml(host)}</h1>`);
+  }
 
   // Strip classes and schema attributes from html/body
   $("html").removeAttr("class").removeAttr("xmlns").removeAttr("xml:lang");
@@ -561,9 +585,15 @@ function isListingPage(url: string): boolean {
 
     // Root paths and short section paths are typically listings, not articles
     // e.g. /, /en/, /news/, /tech/
+    // But long single-segment paths with digits are usually articles
+    // e.g. /tributes-paddy-conaghan-world-swimming-7004700-Apr2026/
     const trimmed = path.replace(/\/$/, "");
     const segments = trimmed.split("/").filter(Boolean);
-    if (segments.length <= 1) return true;
+    if (segments.length === 0) return true;
+    if (segments.length === 1) {
+      const slug = segments[0];
+      return slug.length < 20 && !/\d/.test(slug);
+    }
 
     return false;
   } catch {

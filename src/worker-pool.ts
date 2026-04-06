@@ -1,5 +1,7 @@
 // Worker pool for parallel HTML cleaning
 
+import { ThinContentError } from "./clean";
+
 const WORKER_COUNT = Number(process.env.READER_WORKERS) || 4;
 console.log(`Max Readbility workers: ${WORKER_COUNT}`);
 
@@ -27,7 +29,8 @@ function createWorker(): PoolEntry {
     (entry as any)._currentJob = undefined;
 
     if (job) {
-      if (error) job.reject(new Error(error));
+      if (error === "ThinContentError") job.reject(new ThinContentError());
+      else if (error) job.reject(new Error(error));
       else job.resolve(result);
     }
 

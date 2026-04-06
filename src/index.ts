@@ -28,7 +28,7 @@ app.get("/", (c) => {
 <body>
   <h1>chop.ax</h1>
   <p>Strip the bloat from web pages. Paste a URL below.
-     <a href="/about">About</a></p>
+     <a href="/about">More info...</a></p>
   <form action="/go" method="get">
     <input type="text" name="url" placeholder="https://example.com/article" />
     <button type="submit">Chop it</button>
@@ -90,10 +90,11 @@ app.get("/about", (c) => {
   <h1>chop.ax</h1>
   <p>Strip the bloat from web pages.</p>
 
-  <h2>What is this?</h2>
-  <p>chop.ax takes cluttered, ad-heavy web pages and returns just the content.</p>
+  <h2>What's this?</h2>
+  <p>chop.ax takes unreasonably large, ad-heavy web pages and returns just the content.
+  This can be particularly useful for extermely low-bandwidth connections like dial-up or LoRa.</p>
 
-  <h2>How it works</h2>
+  <h2>How do I use it?</h2>
   <ol>
     <li>Paste a URL or prepend <code>chop.ax/</code> to any supported URL.</li>
     <li>The server fetches the page, extracts the article content, strips
@@ -101,7 +102,7 @@ app.get("/about", (c) => {
     <li>You get a small, clean, somewhat-readable page.</li>
   </ol>
 
-  <h2>What it removes</h2>
+  <h2>What's removed?</h2>
   <ul>
     <li>JavaScript, tracking pixels, and analytics</li>
     <li>Ads, pop-ups, and cookie banners</li>
@@ -119,7 +120,7 @@ app.get("/about", (c) => {
 
   <h2>Links</h2>
   <ul>
-    <li><a href="https://github.com/xfoa/chop.ax">Contribute, report bugs, or run it yourself (GitHub)</a></li>
+    <li><a href="https://github.com/xfoa/chop.ax">Contribute, report bugs, or host it yourself (GitHub)</a></li>
     <li><a href="https://ko-fi.com/xfoax">Support this project (Ko-fi)</a></li>
   </ul>
 

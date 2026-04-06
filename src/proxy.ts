@@ -6,6 +6,7 @@ import { isAllowed, getAllowedDomainsHtml } from "./whitelist";
 import { getCached, setCache } from "./cache";
 import { renderPage, fetchPage, collectImgurImages } from "./browser";
 import { cleanInWorker } from "./worker-pool";
+import { ThinContentError } from "./clean";
 
 const MAX_CONCURRENT = Number(process.env.MAX_CONCURRENT) || 16;
 console.log(`Maximum concurrent renders: ${MAX_CONCURRENT}`);
@@ -180,6 +181,18 @@ else if(Hls.isSupported()){var h=new Hls();h.loadSource(u);h.attachMedia(v)}
     const html = await Promise.race([promise, timeout]);
     return c.html(html);
   } catch (err) {
+    if (err instanceof ThinContentError) {
+      console.warn(`[200] Thin content (JS-dependent page): ${url} ${client}`);
+      const escaped = url.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+      return c.html(`<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>chop.ax</title></head>
+<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;max-width:680px;margin:40px auto;padding:0 20px">
+<h1>This page requires JavaScript</h1>
+<p>This page relies on JavaScript to display its content and could not be simplified.</p>
+<p>Visit the original page: <a href="${escaped}">${escaped}</a></p>
+</body></html>`);
+    }
     const isTimeout = err instanceof Error && err.message === "Render timed out";
     const upstream = (err as any)?.upstreamStatus as number | undefined;
     const msg = isTimeout
@@ -246,10 +259,23 @@ async function processPage(url: string, client?: string): Promise<string> {
       }
     }
 
-    const rendered = needsPuppeteer(url)
+    const usePuppeteer = needsPuppeteer(url);
+    let rendered = usePuppeteer
       ? await renderPage(url)
       : await fetchPage(url);
-    const cleaned = await cleanInWorker(rendered.html, rendered.css, url, rendered.galleryPreviews, client);
+    let cleaned: string;
+    try {
+      cleaned = await cleanInWorker(rendered.html, rendered.css, url, rendered.galleryPreviews, client);
+    } catch (err) {
+      // Thin content from plain fetch -- retry with Puppeteer
+      if (err instanceof ThinContentError && !usePuppeteer) {
+        console.warn(`[retry] Thin content, retrying with Puppeteer: ${url} ${client || ""}`);
+        rendered = await renderPage(url);
+        cleaned = await cleanInWorker(rendered.html, rendered.css, url, rendered.galleryPreviews, client);
+      } else {
+        throw err;
+      }
+    }
     await setCache(url, cleaned);
     return cleaned;
   } finally {

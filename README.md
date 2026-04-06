@@ -4,8 +4,8 @@ Web proxy that strips bloat from pages for extremely low-bandwidth browsing. Vis
 
 ## Features
 
-- Article extraction via Mozilla Readability
-- Puppeteer rendering for JS-heavy sites (Reddit, Imgur)
+- Article extraction via [Mozilla Readability](https://github.com/mozilla/readability)
+- [Puppeteer](https://pptr.dev/) rendering for JS-heavy sites (Reddit, Imgur)
 - Simple HTTP fetch for static sites (Wikipedia, news)
 - Worker thread pool for parallel HTML cleaning
 - Redis caching (1hr TTL)
