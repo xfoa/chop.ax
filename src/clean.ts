@@ -84,15 +84,20 @@ export async function cleanHtml(
     }
   }
 
-  // Detect near-empty output (JS-dependent pages that render nothing useful)
-  const visible = result
-    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
-    .replace(/<[^>]*>/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-  const wordCount = visible.split(" ").length;
-  if (wordCount < 80) {
-    throw new ThinContentError();
+  // Detect near-empty output (JS-dependent pages that render nothing useful).
+  // Skip this check if paywall content was detected -- partial articles are
+  // expected to be short and we should serve what we have.
+  const isPaywalled = result.includes("behind a paywall");
+  if (!isPaywalled) {
+    const visible = result
+      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+      .replace(/<[^>]*>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    const wordCount = visible.split(" ").length;
+    if (wordCount < 80) {
+      throw new ThinContentError();
+    }
   }
 
   return result;
@@ -125,7 +130,16 @@ function cleanReadabilityArticle(
 
   $("script").remove();
   stripHeavyMedia($);
+  const hadPaywall = stripPaywallNoise($);
   rewriteUrls($, sourceUrl);
+
+  if (hadPaywall) {
+    $("body > article").last().append(
+      `<p style="margin-top:2em;padding:12px;background:#fff3cd;border:1px solid #e0c36e;border-radius:4px;font-size:0.9em">` +
+      `This article is behind a paywall. Only the freely available portion is shown above. ` +
+      `<a href="${escapeHtml(sourceUrl)}">View the full article on the original site.</a></p>`
+    );
+  }
 
   return $.html();
 }
@@ -308,8 +322,9 @@ async function fallbackClean(
     $(el).replaceWith($(el).html() || "");
   });
 
-  // Strip heavy media
+  // Strip heavy media and paywall noise
   stripHeavyMedia($);
+  const hadPaywall = stripPaywallNoise($);
 
   // Strip all attributes except a small whitelist
   const KEEP_ATTRS = new Set(["href", "src", "alt", "class"]);
@@ -392,6 +407,14 @@ async function fallbackClean(
   // (e.g. inside conditional comments, re-exposed by DOM unwrapping)
   $("script").remove();
 
+  if (hadPaywall) {
+    $("body").append(
+      `<p style="margin-top:2em;padding:12px;background:#fff3cd;border:1px solid #e0c36e;border-radius:4px;font-size:0.9em">` +
+      `This article is behind a paywall. Only the freely available portion is shown above. ` +
+      `<a href="${escapeHtml(sourceUrl)}">View the full article on the original site.</a></p>`
+    );
+  }
+
   $("body").append(
     `<div class="chop-footer">` +
       `<a href="${escapeHtml(sourceUrl)}">Original page</a> -- ` +
@@ -445,6 +468,85 @@ function stripHeavyMedia($: cheerio.CheerioAPI): void {
 
   $("img[srcset]").removeAttr("srcset");
   $("picture source").remove();
+}
+
+// Paywall / subscription UI patterns to strip from article content.
+// These match text that paywalled sites inject into the DOM (login prompts,
+// subscription offers, device-limit warnings, "X% remaining" teasers).
+const PAYWALL_PATTERNS = [
+  // French paywalls (Le Monde, Le Figaro, etc.)
+  /il vous reste \d+[\.,]?\d*\s*% de cet article/i,
+  /la suite est r[e\u00e9]serv[e\u00e9]e aux abonn[e\u00e9]s/i,
+  /article r[e\u00e9]serv[e\u00e9] aux abonn[e\u00e9]s/i,
+  /cet article vous est offert/i,
+  /lecture restreinte/i,
+  /connectez-vous.*inscrivez-vous/is,
+  /se connecter.*inscrivez-vous/is,
+  /vous n.+tes pas inscrit/i,
+  /^se connecter$/i,
+  /temps de lecture.*\d+\s*min/i,
+  /vous ne pouvez lire .+ que sur un seul appareil/i,
+  /d[e\u00e9]couvrir l.offre/i,
+  /d[e\u00e9]couvrir les offres/i,
+  /votre abonnement n.autorise pas/i,
+  /ce message s.affichera sur l.autre appareil/i,
+  /comment ne plus voir ce message/i,
+  /modifier votre mot de passe/i,
+  /vous pouvez vous connecter avec votre compte sur autant/i,
+  // English paywalls (generic)
+  /subscribe to continue reading/i,
+  /this article is for (paid )?subscribers/i,
+  /you.ve (reached|hit) your (free )?article limit/i,
+  /create a free account to continue/i,
+  /already a subscriber\? (sign|log) in/i,
+];
+
+// IDs and selectors commonly used by paywall overlays
+const PAYWALL_SELECTORS = [
+  "[id*='capping']",
+  "[id*='paywall']",
+  "[id*='metered']",
+  "[class*='paywall']",
+  "[class*='metered']",
+  "[class*='premium-wall']",
+  "[class*='subscribe-wall']",
+  "[class*='piano-']",
+].join(", ");
+
+function stripPaywallNoise($: cheerio.CheerioAPI): boolean {
+  let found = false;
+
+  // Remove elements matching paywall selectors
+  const paywallEls = $(PAYWALL_SELECTORS);
+  if (paywallEls.length) found = true;
+  paywallEls.remove();
+
+  // Remove leaf-ish elements whose text matches paywall patterns.
+  // Only target elements with no block-level children to avoid nuking
+  // a container that wraps both paywall UI and real article paragraphs.
+  const blockTags = new Set(["div", "p", "section", "article", "ul", "ol", "table", "blockquote", "h1", "h2", "h3", "h4", "h5", "h6"]);
+  const root = $("article").length ? "article" : "body";
+  $(`${root} *`).each((_, el) => {
+    const elem = $(el);
+    // Skip if this element has block-level children -- it's a wrapper
+    let hasBlockChild = false;
+    elem.children().each((_, child) => {
+      if (blockTags.has((child as any).tagName)) { hasBlockChild = true; }
+    });
+    if (hasBlockChild) return;
+
+    const text = elem.text();
+    if (text.length > 2000) return;
+    for (const re of PAYWALL_PATTERNS) {
+      if (re.test(text)) {
+        found = true;
+        elem.remove();
+        return;
+      }
+    }
+  });
+
+  return found;
 }
 
 function parsePxValue(style: string, prop: string): number {
