@@ -196,6 +196,10 @@ else if(Hls.isSupported()){var h=new Hls();h.loadSource(u);h.attachMedia(v)}
 const NEEDS_PUPPETEER = new Set([
   "reddit.com", "old.reddit.com", "www.reddit.com",
   "imgur.com", "www.imgur.com",
+  "france24.com", "www.france24.com",
+  "japantimes.co.jp", "www.japantimes.co.jp",
+  "reuters.com", "www.reuters.com",
+  "mayoclinic.org", "www.mayoclinic.org",
 ]);
 
 function needsPuppeteer(url: string): boolean {
@@ -283,6 +287,12 @@ function normalizeUrl(raw: string): string {
     u = "https://" + u;
   }
   const parsed = new URL(u);
+
+  // Reject URLs whose hostname has no dot -- these are mangled relative paths
+  // (e.g. "build/images/sprite.svg" -> "https://build/images/sprite.svg")
+  if (!parsed.hostname.includes(".")) {
+    throw new Error("Invalid hostname");
+  }
 
   // Redirect reddit.com to old.reddit.com (lighter, less bot-hostile)
   if (

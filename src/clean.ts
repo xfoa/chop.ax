@@ -231,18 +231,21 @@ async function fallbackClean(
   });
 
   // Remove common non-content elements
-  $(
-    "nav, header, footer, aside, .sidebar, .side, .nav, .menu, .header, " +
-      ".footer, .ad, .ads, .advertisement, [role='navigation'], " +
-      "[role='banner'], [role='complementary'], [role='contentinfo'], " +
-      ".search, .promoted, .sponsorlink, " +
-      ".midcol, .rank, .score, .loading, .expando, " +
-      ".flat-list.buttons, .dropdown, .menuarea, .infobar, " +
-      "[class*='reportform'], .login-required, .usertext-edit, " +
-      ".footer-parent, .bottommenu, .debuginfo, .morechildren, " +
-      ".numchildren, .clearleft, .parent, .child:empty, " +
-      "input[type='hidden']"
-  ).remove();
+  // On listing pages, keep <aside> -- news sites often use it for content sections
+  const isListing = isListingPage(sourceUrl);
+  const removeSelectors =
+    "nav, header, footer, .sidebar, .side, .nav, .menu, .header, " +
+    ".footer, .ad, .ads, .advertisement, [role='navigation'], " +
+    "[role='banner'], [role='complementary'], [role='contentinfo'], " +
+    ".search, .promoted, .sponsorlink, " +
+    ".midcol, .rank, .score, .loading, .expando, " +
+    ".flat-list.buttons, .dropdown, .menuarea, .infobar, " +
+    "[class*='reportform'], .login-required, .usertext-edit, " +
+    ".footer-parent, .bottommenu, .debuginfo, .morechildren, " +
+    ".numchildren, .clearleft, .parent, .child:empty, " +
+    "input[type='hidden']" +
+    (isListing ? "" : ", aside");
+  $(removeSelectors).remove();
 
   // Unwrap forms (keep contents, remove the form wrapper)
   $("form").each((_, el) => {
@@ -433,6 +436,39 @@ function rewriteUrls($: cheerio.CheerioAPI, sourceUrl: string): void {
       // Malformed -- leave as-is
     }
   });
+
+  // Resolve any other relative resource URLs so the browser fetches from
+  // the original server instead of requesting them through the proxy
+  $("link[href]").each((_, el) => {
+    const elem = $(el);
+    const href = elem.attr("href");
+    if (!href) return;
+    try {
+      elem.attr("href", new URL(href, base).href);
+    } catch {}
+  });
+
+  $("[src]").each((_, el) => {
+    const elem = $(el);
+    if (elem.is("img")) return; // already handled
+    const src = elem.attr("src");
+    if (!src || src.startsWith("data:")) return;
+    try {
+      elem.attr("src", new URL(src, base).href);
+    } catch {}
+  });
+
+  // SVG <use> references (href or xlink:href)
+  $("use").each((_, el) => {
+    const elem = $(el);
+    for (const attr of ["href", "xlink:href"]) {
+      const val = elem.attr(attr);
+      if (!val || val.startsWith("#")) continue;
+      try {
+        elem.attr(attr, new URL(val, base).href);
+      } catch {}
+    }
+  });
 }
 
 function escapeHtml(s: string): string {
@@ -463,6 +499,12 @@ function isListingPage(url: string): boolean {
     if (host === "lobste.rs") {
       return !path.startsWith("/s/");
     }
+
+    // Root paths and short section paths are typically listings, not articles
+    // e.g. /, /en/, /news/, /tech/
+    const trimmed = path.replace(/\/$/, "");
+    const segments = trimmed.split("/").filter(Boolean);
+    if (segments.length <= 1) return true;
 
     return false;
   } catch {

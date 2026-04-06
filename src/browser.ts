@@ -1,4 +1,5 @@
 import puppeteer from "puppeteer-extra";
+import puppeteerVanilla from "puppeteer";
 import AdblockerPlugin from "puppeteer-extra-plugin-adblocker";
 import StealthPlugin from "puppeteer-extra-plugin-stealth";
 import type { Browser } from "puppeteer";
@@ -11,22 +12,43 @@ puppeteer.use(
   })
 );
 
+const BROWSER_ARGS = [
+  "--no-sandbox",
+  "--disable-setuid-sandbox",
+  "--disable-dev-shm-usage",
+  "--disable-gpu",
+];
+
+// Sites where stealth/adblocker plugins cause consent walls or breakage
+const NEEDS_VANILLA = new Set([
+  "france24.com", "www.france24.com",
+]);
+
 const POOL_SIZE = Number(process.env.BROWSER_POOL) || 3;
 console.log(`Browser pool size: ${POOL_SIZE}`);
 const pool: (Browser | null)[] = new Array(POOL_SIZE).fill(null);
 let robin = 0;
 
+// Single vanilla browser instance (no plugins)
+let vanillaBrowser: Browser | null = null;
+
 async function launchBrowser(): Promise<Browser> {
   return (await puppeteer.launch({
     headless: true,
     executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
-    args: [
-      "--no-sandbox",
-      "--disable-setuid-sandbox",
-      "--disable-dev-shm-usage",
-      "--disable-gpu",
-    ],
+    args: BROWSER_ARGS,
   })) as Browser;
+}
+
+async function getVanillaBrowser(): Promise<Browser> {
+  if (!vanillaBrowser || !vanillaBrowser.connected) {
+    vanillaBrowser = await puppeteerVanilla.launch({
+      headless: true,
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+      args: BROWSER_ARGS,
+    });
+  }
+  return vanillaBrowser;
 }
 
 export async function getBrowser(): Promise<Browser> {
@@ -42,11 +64,46 @@ export async function getBrowser(): Promise<Browser> {
 export async function renderPage(
   url: string
 ): Promise<{ html: string; css: string; galleryPreviews?: Record<string, string> }> {
-  const b = await getBrowser();
+  const host = new URL(url).hostname;
+  const b = NEEDS_VANILLA.has(host) ? await getVanillaBrowser() : await getBrowser();
   const page = await b.newPage();
 
   try {
     await page.goto(url, { waitUntil: "networkidle2", timeout: 15000 });
+
+    // Dismiss cookie consent banners
+    await page.evaluate(() => {
+      const selectors = [
+        // Didomi (france24, etc.)
+        '#didomi-notice-agree-button',
+        '.didomi-notice-agree-button',
+        // OneTrust
+        '#onetrust-accept-btn-handler',
+        // Quantcast/CMP
+        '.qc-cmp2-summary-buttons button[mode="primary"]',
+        // Common consent frameworks
+        '[id*="consent"] button[class*="accept"]',
+        '[id*="consent"] button[class*="agree"]',
+        '[class*="consent"] button[class*="accept"]',
+        '[class*="consent"] button[class*="agree"]',
+        '[id*="cookie"] button[class*="accept"]',
+        '[id*="cookie"] button[class*="agree"]',
+        // Generic patterns
+        'button[data-testid="accept-cookies"]',
+        'button[data-testid="cookie-accept"]',
+        '[class*="CookieConsent"] button:first-of-type',
+        '.cookie-banner button[class*="accept"]',
+        '.cc-accept',
+        '.cc-btn.cc-allow',
+      ];
+      for (const sel of selectors) {
+        const btn = document.querySelector<HTMLElement>(sel);
+        if (btn) { btn.click(); break; }
+      }
+    }).catch(() => {});
+
+    // Brief wait for content to load after consent dismissal
+    await page.waitForNetworkIdle({ idleTime: 500, timeout: 5000 }).catch(() => {});
 
     // Extract all loaded CSS (inline + external stylesheets)
     const css = await page.evaluate(() => {
@@ -172,6 +229,10 @@ async function closeAll() {
     }
   }
   pool.fill(null);
+  if (vanillaBrowser && vanillaBrowser.connected) {
+    try { await vanillaBrowser.close(); } catch {}
+  }
+  vanillaBrowser = null;
 }
 
 process.on("exit", () => { closeAll(); });

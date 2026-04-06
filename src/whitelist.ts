@@ -33,7 +33,6 @@ const ALLOWED_BY_CATEGORY: Record<string, string[]> = {
     "yle.fi",
   ],
   "Tech": [
-    "anandtech.com",
     "lobste.rs",
     "lwn.net",
     "news.ycombinator.com",
