@@ -7,15 +7,20 @@ import { getCached, setCache } from "./cache";
 import { renderPage, fetchPage, collectImgurImages } from "./browser";
 import { cleanInWorker } from "./worker-pool";
 
-const MAX_CONCURRENT = Number(process.env.MAX_CONCURRENT) || 32;
+const MAX_CONCURRENT = Number(process.env.MAX_CONCURRENT) || 16;
+console.log(`Maximum concurrent renders: ${MAX_CONCURRENT}`);
 export const RENDER_TIMEOUT = Number(process.env.RENDER_TIMEOUT) || 10_000;
+console.log(`Render timeout: ${RENDER_TIMEOUT} ms`);
 let activeRenders = 0;
 const inflight = new Map<string, Promise<string>>();
 
 // Rate limiting: sliding window counters for renders only
 const RATE_WINDOW = Number(process.env.RATE_WINDOW) || 60_000;
+console.log(`Rate limiting window: ${RATE_WINDOW } ms`);
 const RATE_PER_USER = Number(process.env.RATE_PER_USER) || 10;
+console.log(`Rate limit per user: ${RATE_PER_USER}`);
 const RATE_PER_IP = Number(process.env.RATE_PER_IP) || 30;
+console.log(`Rate limit per IP: ${RATE_PER_IP}`);
 const renderHits = new Map<string, number[]>();
 
 function checkRate(key: string, limit: number): boolean {

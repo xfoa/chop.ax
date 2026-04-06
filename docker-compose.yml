@@ -8,7 +8,7 @@ services:
       - PORT=3000
       - REDIS_URL=redis://redis:6379
       - BROWSER_POOL=3
-      - CLEAN_WORKERS=4
+      - READER_WORKERS=4
       - MAX_CONCURRENT=32
       - RENDER_TIMEOUT=10000
       - RATE_WINDOW=60000

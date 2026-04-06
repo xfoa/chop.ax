@@ -1,6 +1,7 @@
 // Worker pool for parallel HTML cleaning
 
-const WORKER_COUNT = Number(process.env.CLEAN_WORKERS) || 4;
+const WORKER_COUNT = Number(process.env.READER_WORKERS) || 4;
+console.log(`Max Readbility workers: ${WORKER_COUNT}`);
 
 interface PendingJob {
   resolve: (html: string) => void;

@@ -32,7 +32,7 @@ npm start
 | `PORT` | `3000` | HTTP server port |
 | `REDIS_URL` | `redis://localhost:6379` | Redis connection URL |
 | `BROWSER_POOL` | `3` | Number of Puppeteer browser instances |
-| `CLEAN_WORKERS` | `4` | Number of worker threads for HTML cleaning |
+| `READER_WORKERS` | `4` | Number of worker threads for Readability HTML cleaning |
 | `MAX_CONCURRENT` | `32` | Max concurrent render requests |
 | `RENDER_TIMEOUT` | `10000` | Render timeout in ms |
 | `RATE_WINDOW` | `60000` | Rate limit sliding window in ms |

@@ -12,7 +12,7 @@ puppeteer.use(
 );
 
 const POOL_SIZE = Number(process.env.BROWSER_POOL) || 3;
-console.log(`Browser pool size: ${POOL_SIZE}`)
+console.log(`Browser pool size: ${POOL_SIZE}`);
 const pool: (Browser | null)[] = new Array(POOL_SIZE).fill(null);
 let robin = 0;
 

@@ -2,7 +2,7 @@
   "name": "chop.ax",
   "version": "0.1.0",
   "scripts": {
-    "dev": "bun run --hot src/index.ts",
+    "dev": "BROWSER_POOL=8 READER_WORKERS=8 MAX_CONCURRENT=128 RENDER_TIMEOUT=60000 RATE_PER_USER=100 RATE_PER_IP=300 bun run --hot src/index.ts",
     "start": "bun run src/index.ts"
   },
   "dependencies": {
