@@ -266,7 +266,8 @@ border-top:1px solid #ccc;font-size:14px;color:#666}
 <div class="chop-footer">
   <a href="${sourceUrl}">Original page</a> --
   Served by <a href="https://chop.ax">chop.ax</a> --
-  <a href="https://ko-fi.com/chopax">Support this project</a>
+  <a href="https://ko-fi.com/xfoax">Support this project</a> --
+  <a href="https://github.com/xfoa/chop.ax">Contribute</a>
 </div>
 </body></html>`;
 }
