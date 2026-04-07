@@ -15,5 +15,5 @@ output "redis_private_ip" {
 
 output "app_private_ips" {
   description = "App server private IPs"
-  value       = ["10.0.1.11", "10.0.1.12"]
+  value       = [for i in range(length(hcloud_server.app)) : "10.0.1.${i + 11}"]
 }
