@@ -12,7 +12,6 @@ const ALLOWED_BY_CATEGORY: Record<string, string[]> = {
     "elpais.com",
     "france24.com",
     "lemonde.fr",
-    "mirror.co.uk",
     "mtvuutiset.fi",
     "npr.org",
     "nytimes.com",
@@ -66,7 +65,7 @@ const ALLOWED_BY_CATEGORY: Record<string, string[]> = {
     "webmd.com",
     "who.int",
   ],
-  "Preparedness": [
+  "Emergency": [
     "getprepared.gc.ca",
     "ready.gov",
     "redcross.org",
