@@ -10,14 +10,14 @@ import { ThinContentError } from "./clean";
 
 const MAX_CONCURRENT = Number(process.env.MAX_CONCURRENT) || 16;
 console.log(`Maximum concurrent renders: ${MAX_CONCURRENT}`);
-export const RENDER_TIMEOUT = Number(process.env.RENDER_TIMEOUT) || 10_000;
-console.log(`Render timeout: ${RENDER_TIMEOUT} ms`);
+export const RENDER_TIMEOUT = Number(process.env.RENDER_TIMEOUT) || 10;
+console.log(`Render timeout: ${RENDER_TIMEOUT} s`);
 let activeRenders = 0;
 const inflight = new Map<string, Promise<string>>();
 
 // Rate limiting: sliding window counters for renders only
-const RATE_WINDOW = Number(process.env.RATE_WINDOW) || 60_000;
-console.log(`Rate limiting window: ${RATE_WINDOW } ms`);
+const RATE_WINDOW = Number(process.env.RATE_WINDOW) || 60;
+console.log(`Rate limiting window: ${RATE_WINDOW} s`);
 const RATE_PER_USER = Number(process.env.RATE_PER_USER) || 10;
 console.log(`Rate limit per user: ${RATE_PER_USER}`);
 const RATE_PER_IP = Number(process.env.RATE_PER_IP) || 30;
@@ -27,7 +27,7 @@ const renderHits = new Map<string, number[]>();
 function checkRate(key: string, limit: number): boolean {
   const now = Date.now();
   const hits = renderHits.get(key) || [];
-  const recent = hits.filter((t) => now - t < RATE_WINDOW);
+  const recent = hits.filter((t) => now - t < RATE_WINDOW * 1000);
   renderHits.set(key, recent);
   return recent.length >= limit;
 }
@@ -41,8 +41,8 @@ function recordHit(key: string): void {
 
 // Auto-ban: IPs that send too many 400s get blocked (vuln scanners)
 const BAN_THRESHOLD = 10;
-const BAN_WINDOW = 60_000;
-const BAN_DURATION = 3_600_000;
+const BAN_WINDOW = 60;
+const BAN_DURATION = 3600;
 const banHits = new Map<string, number[]>();
 const bannedIps = new Map<string, number>();
 
@@ -68,12 +68,12 @@ export async function banMiddleware(c: Context, next: () => Promise<void>): Prom
     const now = Date.now();
     const hits = banHits.get(ip) || [];
     hits.push(now);
-    const recent = hits.filter((t) => now - t < BAN_WINDOW);
+    const recent = hits.filter((t) => now - t < BAN_WINDOW * 1000);
     banHits.set(ip, recent);
     if (recent.length >= BAN_THRESHOLD) {
-      bannedIps.set(ip, now + BAN_DURATION);
+      bannedIps.set(ip, now + BAN_DURATION * 1000);
       banHits.delete(ip);
-      console.warn(`[ban] Banned ${ip} for ${BAN_DURATION / 1000}s after ${BAN_THRESHOLD} 400s`);
+      console.warn(`[ban] Banned ${ip} for ${BAN_DURATION}s after ${BAN_THRESHOLD} 400s`);
     }
   }
 }
@@ -82,19 +82,19 @@ export async function banMiddleware(c: Context, next: () => Promise<void>): Prom
 setInterval(() => {
   const now = Date.now();
   for (const [key, hits] of renderHits) {
-    const recent = hits.filter((t) => now - t < RATE_WINDOW);
+    const recent = hits.filter((t) => now - t < RATE_WINDOW * 1000);
     if (recent.length === 0) renderHits.delete(key);
     else renderHits.set(key, recent);
   }
   for (const [ip, hits] of banHits) {
-    const recent = hits.filter((t) => now - t < BAN_WINDOW);
+    const recent = hits.filter((t) => now - t < BAN_WINDOW * 1000);
     if (recent.length === 0) banHits.delete(ip);
     else banHits.set(ip, recent);
   }
   for (const [ip, expiry] of bannedIps) {
     if (now >= expiry) bannedIps.delete(ip);
   }
-}, RATE_WINDOW);
+}, RATE_WINDOW * 1000);
 
 export async function handleProxy(c: Context): Promise<Response> {
   let reqUrl: URL;
@@ -222,7 +222,7 @@ else if(Hls.isSupported()){var h=new Hls();h.loadSource(u);h.attachMedia(v)}
   promise.catch(() => {});
 
   const timeout = new Promise<never>((_, reject) =>
-    setTimeout(() => reject(new Error("Render timed out")), RENDER_TIMEOUT)
+    setTimeout(() => reject(new Error("Render timed out")), RENDER_TIMEOUT * 1000)
   );
 
   try {

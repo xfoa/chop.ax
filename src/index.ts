@@ -144,5 +144,5 @@ app.get("*", handleProxy);
 export default {
   port: Number(process.env.PORT) || 3000,
   fetch: app.fetch,
-  idleTimeout: Math.ceil(RENDER_TIMEOUT / 1000) + 5,
+  idleTimeout: RENDER_TIMEOUT + 5,
 };
