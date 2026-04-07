@@ -1,7 +1,8 @@
 #!/bin/bash
 # Usage: ./deploy.sh
-# Rolling redeploy: destroys and recreates each app server one at a time
-# via Terraform, then flushes Redis. Handles scale up/down.
+# For redeploying app when infra hasn't changed.
+# Rolling redeploy: destroys and recreates each app server one at a time via
+# Terraform, then flushes Redis.
 # Run from the deploy/ directory (needs terraform state).
 set -euo pipefail
 

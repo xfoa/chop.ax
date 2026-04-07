@@ -4,6 +4,10 @@ terraform {
       source  = "hetznercloud/hcloud"
       version = "~> 1.49"
     }
+    tls = {
+      source  = "hashicorp/tls"
+      version = "~> 4.0"
+    }
   }
 }
 
@@ -46,10 +50,10 @@ resource "hcloud_firewall" "app" {
   }
 
   rule {
-    description = "HTTP"
+    description = "HTTPS"
     direction   = "in"
     protocol    = "tcp"
-    port        = "80"
+    port        = "443"
     source_ips  = ["0.0.0.0/0", "::/0"]
   }
 

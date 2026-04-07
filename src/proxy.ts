@@ -39,6 +39,45 @@ function recordHit(key: string): void {
   renderHits.set(key, hits);
 }
 
+// Auto-ban: IPs that send too many 400s get blocked (vuln scanners)
+const BAN_THRESHOLD = 10;
+const BAN_WINDOW = 60_000;
+const BAN_DURATION = 3_600_000;
+const banHits = new Map<string, number[]>();
+const bannedIps = new Map<string, number>();
+
+export function extractIp(c: Context): string {
+  const raw = c.req.header("x-forwarded-for")?.split(",")[0]?.trim()
+    || c.req.header("x-real-ip")
+    || getConnInfo(c).remote.address
+    || "unknown";
+  return raw.replace(/^::ffff:/, "");
+}
+
+export async function banMiddleware(c: Context, next: () => Promise<void>): Promise<Response | void> {
+  const ip = extractIp(c);
+  const expiry = bannedIps.get(ip);
+  if (expiry) {
+    if (Date.now() < expiry) return c.body("Weird Barbie error: You played with me too hard.", 403);
+    bannedIps.delete(ip);
+  }
+
+  await next();
+
+  if (c.res.status === 400) {
+    const now = Date.now();
+    const hits = banHits.get(ip) || [];
+    hits.push(now);
+    const recent = hits.filter((t) => now - t < BAN_WINDOW);
+    banHits.set(ip, recent);
+    if (recent.length >= BAN_THRESHOLD) {
+      bannedIps.set(ip, now + BAN_DURATION);
+      banHits.delete(ip);
+      console.warn(`[ban] Banned ${ip} for ${BAN_DURATION / 1000}s after ${BAN_THRESHOLD} 400s`);
+    }
+  }
+}
+
 // Periodic cleanup of stale entries
 setInterval(() => {
   const now = Date.now();
@@ -46,6 +85,14 @@ setInterval(() => {
     const recent = hits.filter((t) => now - t < RATE_WINDOW);
     if (recent.length === 0) renderHits.delete(key);
     else renderHits.set(key, recent);
+  }
+  for (const [ip, hits] of banHits) {
+    const recent = hits.filter((t) => now - t < BAN_WINDOW);
+    if (recent.length === 0) banHits.delete(ip);
+    else banHits.set(ip, recent);
+  }
+  for (const [ip, expiry] of bannedIps) {
+    if (now >= expiry) bannedIps.delete(ip);
   }
 }, RATE_WINDOW);
 
@@ -59,11 +106,7 @@ export async function handleProxy(c: Context): Promise<Response> {
     userId = randomUUID();
     setCookie(c, "chop_id", userId, { maxAge: 86400 * 365, httpOnly: true, sameSite: "Lax" });
   }
-  const rawIp = c.req.header("x-forwarded-for")?.split(",")[0]?.trim()
-    || c.req.header("x-real-ip")
-    || getConnInfo(c).remote.address
-    || "unknown";
-  const clientIp = rawIp.replace(/^::ffff:/, "");
+  const clientIp = extractIp(c);
   const client = `ip=${clientIp} user=${userId}`;
 
   if (!rawUrl || rawUrl === "?") {
