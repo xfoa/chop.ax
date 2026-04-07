@@ -34,22 +34,12 @@ wait_healthy() {
 
 echo "==> Current: $CURRENT_COUNT servers, desired: $DESIRED_COUNT servers"
 
-# Roll servers present in both old and new configs.
-# The first terraform apply also handles any scale up/down as a side effect.
-ROLL_COUNT=$(( CURRENT_COUNT < DESIRED_COUNT ? CURRENT_COUNT : DESIRED_COUNT ))
-
-for i in $(seq 0 $((ROLL_COUNT - 1))); do
+for i in $(seq 0 $((CURRENT_COUNT - 1))); do
   ip=$(app_ip "$i")
   echo "==> Replacing app server $((i + 1)) ($ip)"
   terraform apply -replace="hcloud_server.app[$i]" -auto-approve
   wait_healthy "$ip"
 done
-
-# Scale up from zero (no servers to roll, so the apply above never ran)
-if [ "$ROLL_COUNT" -eq 0 ] && [ "$DESIRED_COUNT" -gt 0 ]; then
-  echo "==> Creating $DESIRED_COUNT server(s)"
-  terraform apply -auto-approve
-fi
 
 # Wait for any newly created servers from scale-up
 for i in $(seq "$CURRENT_COUNT" $((DESIRED_COUNT - 1))); do

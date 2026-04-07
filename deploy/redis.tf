@@ -56,6 +56,12 @@ resource "hcloud_server" "redis" {
         fi
       - systemctl restart redis-server
       - systemctl enable redis-server
+      # Install Grafana Alloy
+      - |
+        ${indent(8, local.alloy_install)}
+      - echo '${base64encode(local.alloy_redis_config)}' | base64 -d > /etc/alloy/config.alloy
+      - systemctl restart alloy
+      - systemctl enable alloy
       # Persist default route across reboots
       - echo 'ip route replace default via 10.0.1.1' >> /etc/rc.local
       - chmod +x /etc/rc.local

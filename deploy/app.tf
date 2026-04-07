@@ -51,6 +51,14 @@ resource "hcloud_server" "app" {
       - apt-get update
       - apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
 
+      # Install Grafana Alloy
+      - |
+        ${indent(8, local.alloy_install)}
+      - usermod -aG docker alloy
+      - echo '${base64encode(replace(local.alloy_app_config, "__INSTANCE__", "chop-ax-app-${count.index + 1}"))}' | base64 -d > /etc/alloy/config.alloy
+      - systemctl restart alloy
+      - systemctl enable alloy
+
       # Clone and build
       - git clone https://github.com/xfoa/chop.ax /opt/chop.ax
       - docker build -t chop-ax /opt/chop.ax
@@ -62,13 +70,14 @@ resource "hcloud_server" "app" {
           --security-opt seccomp=unconfined \
           --shm-size 1g \
           -p 3000:3000 \
-          -e REDIS_URL=redis://10.0.1.10:6379 \
-          -e BROWSER_POOL=4 \
-          -e READER_WORKERS=6 \
-          -e MAX_CONCURRENT=32 \
-          -e RENDER_TIMEOUT=10000 \
-          -e RATE_PER_USER=10 \
-          -e RATE_PER_IP=30 \
+          -e REDIS_URL=${local.app_redis_url} \
+          -e BROWSER_POOL=${local.app_browser_pool} \
+          -e READER_WORKERS=${local.app_reader_workers} \
+          -e MAX_CONCURRENT=${local.app_max_concurrent} \
+          -e RENDER_TIMEOUT=${local.app_render_timeout} \
+          -e RATE_WINDOW=${local.app_rate_window} \
+          -e RATE_PER_USER=${local.app_rate_per_user} \
+          -e RATE_PER_IP=${local.app_rate_per_ip} \
           chop-ax
 
       # Persist default route across reboots
