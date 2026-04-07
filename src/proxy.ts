@@ -97,7 +97,12 @@ setInterval(() => {
 }, RATE_WINDOW);
 
 export async function handleProxy(c: Context): Promise<Response> {
-  const reqUrl = new URL(c.req.url);
+  let reqUrl: URL;
+  try {
+    reqUrl = new URL(c.req.url);
+  } catch {
+    return c.text("Invalid URL", 400);
+  }
   const rawUrl = reqUrl.pathname.slice(1) + reqUrl.search;
 
   // Resolve client identity early so all log lines can include it
