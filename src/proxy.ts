@@ -215,7 +215,6 @@ const NEEDS_PUPPETEER = new Set([
   "france24.com", "www.france24.com",
   "aljazeera.com", "www.aljazeera.com",
   "lemonde.fr", "www.lemonde.fr",
-  "japantimes.co.jp", "www.japantimes.co.jp",
   "reuters.com", "www.reuters.com",
   "mayoclinic.org", "www.mayoclinic.org",
   "washingtonpost.com", "www.washingtonpost.com",

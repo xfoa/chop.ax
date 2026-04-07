@@ -11,7 +11,6 @@ const ALLOWED_BY_CATEGORY: Record<string, string[]> = {
     "dw.com",
     "elpais.com",
     "france24.com",
-    "japantimes.co.jp",
     "lemonde.fr",
     "mirror.co.uk",
     "mtvuutiset.fi",
