@@ -29,7 +29,7 @@ function createWorker(): PoolEntry {
     (entry as any)._currentJob = undefined;
 
     if (job) {
-      if (error === "ThinContentError") job.reject(new ThinContentError());
+      if (error === "ThinContentError") job.reject(new ThinContentError(result));
       else if (error) job.reject(new Error(error));
       else job.resolve(result);
     }

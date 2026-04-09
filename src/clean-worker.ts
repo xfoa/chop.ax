@@ -10,7 +10,7 @@ self.onmessage = async (e: MessageEvent) => {
     self.postMessage({ result });
   } catch (err) {
     if (err instanceof ThinContentError) {
-      self.postMessage({ error: "ThinContentError" });
+      self.postMessage({ error: "ThinContentError", result: err.html });
     } else {
       self.postMessage({ error: String(err) });
     }

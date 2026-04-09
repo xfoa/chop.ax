@@ -5,7 +5,8 @@ import { PurgeCSS } from "purgecss";
 import { transform } from "lightningcss";
 
 export class ThinContentError extends Error {
-  constructor() { super("Thin content"); this.name = "ThinContentError"; }
+  html: string;
+  constructor(html: string) { super("Thin content"); this.name = "ThinContentError"; this.html = html; }
 }
 
 const SYSTEM_FONTS =
@@ -96,7 +97,7 @@ export async function cleanHtml(
       .trim();
     const wordCount = visible.split(" ").length;
     if (wordCount < 80) {
-      throw new ThinContentError();
+      throw new ThinContentError(result);
     }
   }
 

@@ -306,7 +306,18 @@ async function processPage(url: string, client?: string): Promise<string> {
       if (err instanceof ThinContentError && !usePuppeteer) {
         console.warn(`[retry] Thin content, retrying with Puppeteer: ${url} ${client || ""}`);
         rendered = await renderPage(url);
-        cleaned = await cleanInWorker(rendered.html, rendered.css, url, rendered.galleryPreviews, client);
+        try {
+          cleaned = await cleanInWorker(rendered.html, rendered.css, url, rendered.galleryPreviews, client);
+        } catch (err2) {
+          if (err2 instanceof ThinContentError) {
+            cleaned = err2.html;
+          } else {
+            throw err2;
+          }
+        }
+      } else if (err instanceof ThinContentError) {
+        // Already used Puppeteer; serve whatever we got
+        cleaned = err.html;
       } else {
         throw err;
       }
