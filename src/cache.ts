@@ -2,7 +2,7 @@ import Redis from "ioredis";
 
 const CACHE_TTL = 3600; // 1 hour
 
-const redis = new Redis(process.env.REDIS_URL || "redis://localhost:6379");
+export const redis = new Redis(process.env.REDIS_URL || "redis://localhost:6379");
 
 export async function getCached(url: string): Promise<string | null> {
   return redis.get(`chop:${url}`);

@@ -34,7 +34,7 @@ npm start
 | `BROWSER_POOL` | `3` | Number of Puppeteer browser instances |
 | `READER_WORKERS` | `4` | Number of worker threads for Readability HTML cleaning |
 | `MAX_CONCURRENT` | `32` | Max concurrent render requests |
-| `RENDER_TIMEOUT` | `10000` | Render timeout in ms |
-| `RATE_WINDOW` | `60000` | Rate limit sliding window in ms |
+| `RENDER_TIMEOUT` | `10` | Render timeout in ms |
+| `RATE_WINDOW` | `60` | Rate limit sliding window in ms |
 | `RATE_PER_USER` | `10` | Max renders per user per window |
 | `RATE_PER_IP` | `30` | Max renders per IP per window |

@@ -3,7 +3,7 @@ import type { Context } from "hono";
 import { getCookie, setCookie } from "hono/cookie";
 import { getConnInfo } from "hono/bun";
 import { isAllowed, getAllowedDomainsHtml } from "./whitelist";
-import { getCached, setCache } from "./cache";
+import { getCached, setCache, redis } from "./cache";
 import { renderPage, fetchPage, collectImgurImages } from "./browser";
 import { cleanInWorker } from "./worker-pool";
 import { ThinContentError } from "./clean";
@@ -15,39 +15,41 @@ console.log(`Render timeout: ${RENDER_TIMEOUT} s`);
 let activeRenders = 0;
 const inflight = new Map<string, Promise<string>>();
 
-// Rate limiting: sliding window counters for renders only
+// Rate limiting: sliding window counters for renders only (Redis sorted sets)
 const RATE_WINDOW = Number(process.env.RATE_WINDOW) || 60;
 console.log(`Rate limiting window: ${RATE_WINDOW} s`);
 const RATE_PER_USER = Number(process.env.RATE_PER_USER) || 10;
 console.log(`Rate limit per user: ${RATE_PER_USER}`);
 const RATE_PER_IP = Number(process.env.RATE_PER_IP) || 30;
 console.log(`Rate limit per IP: ${RATE_PER_IP}`);
-const renderHits = new Map<string, number[]>();
 
-function checkRate(key: string, limit: number): boolean {
+async function checkRate(key: string, limit: number): Promise<boolean> {
+  const redisKey = `rate:${key}`;
   const now = Date.now();
-  const hits = renderHits.get(key) || [];
-  const recent = hits.filter((t) => now - t < RATE_WINDOW * 1000);
-  renderHits.set(key, recent);
-  return recent.length >= limit;
+  const windowStart = now - RATE_WINDOW * 1000;
+  const count = await redis.zcount(redisKey, windowStart, "+inf");
+  return count >= limit;
 }
 
-function recordHit(key: string): void {
+async function recordHit(key: string): Promise<void> {
+  const redisKey = `rate:${key}`;
   const now = Date.now();
-  const hits = renderHits.get(key) || [];
-  hits.push(now);
-  renderHits.set(key, hits);
+  const windowStart = now - RATE_WINDOW * 1000;
+  await redis
+    .multi()
+    .zadd(redisKey, now, `${now}:${Math.random().toString(36).slice(2, 8)}`)
+    .zremrangebyscore(redisKey, "-inf", windowStart)
+    .expire(redisKey, RATE_WINDOW)
+    .exec();
 }
 
 // Auto-ban: IPs that send too many 400s get blocked (vuln scanners)
 const BAN_THRESHOLD = 10;
 const BAN_WINDOW = 60;
 const BAN_DURATION = 3600;
-const banHits = new Map<string, number[]>();
-const bannedIps = new Map<string, number>();
 
 export function extractIp(c: Context): string {
-  const raw = c.req.header("x-forwarded-for")?.split(",")[0]?.trim()
+  const raw = c.req.raw.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
     || c.req.header("x-real-ip")
     || getConnInfo(c).remote.address
     || "unknown";
@@ -56,45 +58,29 @@ export function extractIp(c: Context): string {
 
 export async function banMiddleware(c: Context, next: () => Promise<void>): Promise<Response | void> {
   const ip = extractIp(c);
-  const expiry = bannedIps.get(ip);
-  if (expiry) {
-    if (Date.now() < expiry) return c.body("Weird Barbie error: You played with me too hard.", 403);
-    bannedIps.delete(ip);
-  }
+  const banned = await redis.exists(`ban:${ip}`);
+  if (banned) return c.body("Weird Barbie error: You played with me too hard.", 403);
 
   await next();
 
   if (c.res.status === 400) {
     const now = Date.now();
-    const hits = banHits.get(ip) || [];
-    hits.push(now);
-    const recent = hits.filter((t) => now - t < BAN_WINDOW * 1000);
-    banHits.set(ip, recent);
-    if (recent.length >= BAN_THRESHOLD) {
-      bannedIps.set(ip, now + BAN_DURATION * 1000);
-      banHits.delete(ip);
+    const redisKey = `banhits:${ip}`;
+    const windowStart = now - BAN_WINDOW * 1000;
+    await redis
+      .multi()
+      .zadd(redisKey, now, `${now}:${Math.random().toString(36).slice(2, 8)}`)
+      .zremrangebyscore(redisKey, "-inf", windowStart)
+      .expire(redisKey, BAN_WINDOW * 2)
+      .exec();
+    const count = await redis.zcount(redisKey, windowStart, "+inf");
+    if (count >= BAN_THRESHOLD) {
+      await redis.set(`ban:${ip}`, "1", "EX", BAN_DURATION);
+      await redis.del(redisKey);
       console.warn(`[ban] Banned ${ip} for ${BAN_DURATION}s after ${BAN_THRESHOLD} 400s`);
     }
   }
 }
-
-// Periodic cleanup of stale entries
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, hits] of renderHits) {
-    const recent = hits.filter((t) => now - t < RATE_WINDOW * 1000);
-    if (recent.length === 0) renderHits.delete(key);
-    else renderHits.set(key, recent);
-  }
-  for (const [ip, hits] of banHits) {
-    const recent = hits.filter((t) => now - t < BAN_WINDOW * 1000);
-    if (recent.length === 0) banHits.delete(ip);
-    else banHits.set(ip, recent);
-  }
-  for (const [ip, expiry] of bannedIps) {
-    if (now >= expiry) bannedIps.delete(ip);
-  }
-}, RATE_WINDOW * 1000);
 
 export async function handleProxy(c: Context): Promise<Response> {
   let reqUrl: URL;
@@ -185,8 +171,10 @@ else if(Hls.isSupported()){var h=new Hls();h.loadSource(u);h.attachMedia(v)}
   // Rate limit renders: per-user (cookie) and per-IP
   const userKey = `user:${userId}`;
   const ipKey = `ip:${clientIp}`;
-  const userLimited = checkRate(userKey, RATE_PER_USER);
-  const ipLimited = checkRate(ipKey, RATE_PER_IP);
+  const [userLimited, ipLimited] = await Promise.all([
+    checkRate(userKey, RATE_PER_USER),
+    checkRate(ipKey, RATE_PER_IP),
+  ]);
 
   if (userLimited) {
     console.warn(`[429] Rate limited (per-user): ${url} ${client}`);
@@ -197,8 +185,7 @@ else if(Hls.isSupported()){var h=new Hls();h.loadSource(u);h.attachMedia(v)}
     return c.text("Rate limit exceeded. Please wait a moment.", 429);
   }
 
-  recordHit(userKey);
-  recordHit(ipKey);
+  await Promise.all([recordHit(userKey), recordHit(ipKey)]);
 
   // Dedup in-flight requests for the same URL
   if (inflight.has(url)) {
