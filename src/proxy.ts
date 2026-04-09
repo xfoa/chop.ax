@@ -49,7 +49,8 @@ const BAN_WINDOW = 60;
 const BAN_DURATION = 3600;
 
 export function extractIp(c: Context): string {
-  const raw = c.req.raw.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
+  const raw = c.req.header("cf-connecting-ip")
+    || c.req.raw.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
     || c.req.header("x-real-ip")
     || getConnInfo(c).remote.address
     || "unknown";
