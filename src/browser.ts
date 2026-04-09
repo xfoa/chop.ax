@@ -17,6 +17,13 @@ const BROWSER_ARGS = [
   "--disable-setuid-sandbox",
   "--disable-dev-shm-usage",
   "--disable-gpu",
+  "--disable-extensions",
+  "--disable-background-networking",
+  "--disable-default-apps",
+  "--disable-sync",
+  "--disable-translate",
+  "--metrics-recording-only",
+  "--no-first-run",
 ];
 
 // Sites where stealth/adblocker plugins cause consent walls or breakage
@@ -69,10 +76,21 @@ export async function renderPage(
   const page = await b.newPage();
 
   try {
+    // Block images, fonts, and media -- they're stripped by the cleaner anyway
+    await page.setRequestInterception(true);
+    page.on("request", (req) => {
+      const type = req.resourceType();
+      if (type === "image" || type === "font" || type === "media") {
+        req.abort();
+      } else {
+        req.continue();
+      }
+    });
+
     await page.goto(url, { waitUntil: "networkidle2", timeout: 15000 });
 
     // Dismiss cookie consent banners
-    await page.evaluate(() => {
+    const dismissed = await page.evaluate(() => {
       const selectors = [
         // Didomi (france24, etc.)
         '#didomi-notice-agree-button',
@@ -98,12 +116,15 @@ export async function renderPage(
       ];
       for (const sel of selectors) {
         const btn = document.querySelector<HTMLElement>(sel);
-        if (btn) { btn.click(); break; }
+        if (btn) { btn.click(); return true; }
       }
-    }).catch(() => {});
+      return false;
+    }).catch(() => false);
 
     // Brief wait for content to load after consent dismissal
-    await page.waitForNetworkIdle({ idleTime: 500, timeout: 5000 }).catch(() => {});
+    if (dismissed) {
+      await page.waitForNetworkIdle({ idleTime: 500, timeout: 3000 }).catch(() => {});
+    }
 
     // Extract all loaded CSS (inline + external stylesheets)
     const css = await page.evaluate(() => {
