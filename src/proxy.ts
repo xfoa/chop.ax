@@ -223,7 +223,7 @@ else if(Hls.isSupported()){var h=new Hls();h.loadSource(u);h.attachMedia(v)}
       : upstream
         ? `Origin returned HTTP ${upstream}`
         : "Failed to fetch and process the page";
-    const code = isTimeout ? 504 : upstream || 502;
+    const code = isTimeout ? 524 : upstream || 502;
     console.warn(`[${code}] ${msg}: ${url} ${client}`);
     return c.text(msg, code as any);
   } finally {
