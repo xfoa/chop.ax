@@ -185,7 +185,7 @@ async function fetchGalleryPreviews(url: string): Promise<Record<string, string>
 // Simple HTTP fetch for server-rendered sites (no JS needed)
 export async function fetchPage(
   url: string
-): Promise<{ html: string; css: string; galleryPreviews?: Record<string, string> }> {
+): Promise<{ html: string; css: string; finalUrl: string; galleryPreviews?: Record<string, string> }> {
   const resp = await fetch(url, {
     headers: {
       "User-Agent": "Mozilla/5.0 (compatible; chop.ax/0.1)",
@@ -200,7 +200,7 @@ export async function fetchPage(
   }
   const html = await resp.text();
   // No external CSS extraction -- Readability/fallback don't need it for static sites
-  return { html, css: "" };
+  return { html, css: "", finalUrl: resp.url };
 }
 
 // Scroll an Imgur album page and collect image IDs incrementally,

@@ -245,6 +245,7 @@ const NEEDS_PUPPETEER = new Set([
   "nytimes.com", "www.nytimes.com",
   "blog.adafruit.com",
   "stacks.cdc.gov",
+  "dw.com", "www.dw.com"
 ]);
 
 function needsPuppeteer(url: string): boolean {
@@ -283,19 +284,24 @@ async function processPage(url: string, client?: string): Promise<string> {
     }
 
     const usePuppeteer = needsPuppeteer(url);
-    let rendered = usePuppeteer
+    const fetched = usePuppeteer
       ? await renderPage(url)
       : await fetchPage(url);
+    // Use the final URL after redirects (e.g. dw.com -> www.dw.com) so
+    // Puppeteer retries don't re-traverse redirect chains that may behave
+    // differently for headless browsers from datacenter IPs.
+    const resolvedUrl: string = "finalUrl" in fetched ? fetched.finalUrl as string : url;
+    let rendered: { html: string; css: string; galleryPreviews?: Record<string, string> } = fetched;
     let cleaned: string;
     try {
-      cleaned = await cleanInWorker(rendered.html, rendered.css, url, rendered.galleryPreviews, client);
+      cleaned = await cleanInWorker(rendered.html, rendered.css, resolvedUrl, rendered.galleryPreviews, client);
     } catch (err) {
       // Thin content from plain fetch -- retry with Puppeteer
       if (err instanceof ThinContentError && !usePuppeteer) {
-        console.warn(`[retry] Thin content, retrying with Puppeteer: ${url} ${client || ""}`);
-        rendered = await renderPage(url);
+        console.warn(`[retry] Thin content, retrying with Puppeteer: ${resolvedUrl} ${client || ""}`);
+        rendered = await renderPage(resolvedUrl);
         try {
-          cleaned = await cleanInWorker(rendered.html, rendered.css, url, rendered.galleryPreviews, client);
+          cleaned = await cleanInWorker(rendered.html, rendered.css, resolvedUrl, rendered.galleryPreviews, client);
         } catch (err2) {
           if (err2 instanceof ThinContentError) {
             cleaned = err2.html;
