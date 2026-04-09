@@ -229,18 +229,6 @@ else if(Hls.isSupported()){var h=new Hls();h.loadSource(u);h.attachMedia(v)}
     const html = await Promise.race([promise, timeout]);
     return c.html(html);
   } catch (err) {
-    if (err instanceof ThinContentError) {
-      console.warn(`[200] Thin content (JS-dependent page): ${url} ${client}`);
-      const escaped = url.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
-      return c.html(`<!DOCTYPE html>
-<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>chop.ax</title></head>
-<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;max-width:680px;margin:40px auto;padding:0 20px">
-<h1>This page requires JavaScript</h1>
-<p>This page relies on JavaScript to display its content and could not be simplified.</p>
-<p>Visit the original page: <a href="${escaped}">${escaped}</a></p>
-</body></html>`);
-    }
     const isTimeout = err instanceof Error && err.message === "Render timed out";
     const upstream = (err as any)?.upstreamStatus as number | undefined;
     const msg = isTimeout

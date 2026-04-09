@@ -123,7 +123,7 @@ function cleanReadabilityArticle(
     <a href="${escapeHtml(sourceUrl)}">Original page</a> --
     Served by <a href="https://chop.ax">chop.ax</a> --
     <a href="https://ko-fi.com/chopax">Support this project</a> --
-  <a href="https://github.com/xfoa/chop.ax">Contribute</a>
+    <a href="https://github.com/xfoa/chop.ax">Contribute</a>
   </div>
 </body>
 </html>`);
@@ -419,8 +419,8 @@ async function fallbackClean(
     `<div class="chop-footer">` +
       `<a href="${escapeHtml(sourceUrl)}">Original page</a> -- ` +
       `Served by <a href="https://chop.ax">chop.ax</a> -- ` +
-      `<a href="https://ko-fi.com/chopax">Support this project</a></div> -- ` +
-      `<a href="https://github.com/xfoa/chop.ax">Contribute</a>`
+      `<a href="https://ko-fi.com/chopax">Support this project</a> -- ` +
+      `<a href="https://github.com/xfoa/chop.ax">Contribute</a></div>`
   );
 
   let out = $.html();
@@ -680,9 +680,9 @@ function isListingPage(url: string): boolean {
       return !path.startsWith("/item");
     }
 
-    // Lobsters front page
+    // Lobsters: always use fallback (front page and comment threads both)
     if (host === "lobste.rs") {
-      return !path.startsWith("/s/");
+      return true;
     }
 
     // Root paths and short section paths are typically listings, not articles
