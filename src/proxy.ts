@@ -83,6 +83,12 @@ export async function banMiddleware(c: Context, next: () => Promise<void>): Prom
   }
 }
 
+export async function blockMiddleware(c: Context, next: () => Promise<void>): Promise<Response | void> {
+  const ua = c.req.header("user-agent") || "";
+  if (ua.includes("meta-webindexer")) return c.body("Zucced", 403);
+  await next();
+}
+
 export async function handleProxy(c: Context): Promise<Response> {
   let reqUrl: URL;
   try {

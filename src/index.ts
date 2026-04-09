@@ -1,11 +1,14 @@
 import { Hono } from "hono";
-import { handleProxy, banMiddleware, RENDER_TIMEOUT } from "./proxy";
+import { handleProxy, banMiddleware, blockMiddleware, RENDER_TIMEOUT } from "./proxy";
 import { getAllowedDomainsHtml } from "./whitelist";
 
 const app = new Hono();
 
 // Auto-ban IPs that generate excessive 400s (vuln scanners)
 app.use("*", banMiddleware);
+
+// Block unwanted crawlers
+app.use("*", blockMiddleware);
 
 // Landing page
 app.get("/", (c) => {
