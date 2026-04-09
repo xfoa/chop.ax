@@ -1,7 +1,7 @@
 resource "hcloud_server" "app" {
   count       = 2
   name        = "chop-ax-app-${count.index + 1}"
-  server_type = "cax31"
+  server_type = "cpx42"
   location    = "hel1"
   image       = "debian-12"
   ssh_keys    = [hcloud_ssh_key.default.id]
